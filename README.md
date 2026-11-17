@@ -6,20 +6,20 @@ Current input support includes buttons, sticks, triggers, and D-pad input. Gyros
 
 Open Controller Club and tap **Nearby** to discover and pair Bluetooth gamepads, then tap a player slot to move or swap a controller. The default puts the Thor first and other controllers in discovery order. Each Joy-Con can be assigned as a sideways pad; **Combine Joy-Cons** sends a left and right half to the same port. Choose **Start routing** to expose occupied seats as **Xbox Controller P1** through **P4**. A game that offers explicit input assignments can use those names to match its player slots. Tap the top display again if a game loses controller focus after you touch the bottom display. Use the **Emulators** menu to switch output modes or open Dolphin or Cemu with their named Club profiles.
 
-**Stop routing** drops the virtual controllers and releases the physical pads immediately. Closing the app task or stopping the helper also stops routing. If you manually chose a Club device in an emulator, select your original profile when you return to regular play. For the Mario Kart Wii setup action, use **Restore previous** to undo the game-specific mapping. With the USB helper and Xbox output, Club routes the assigned Thor controls exclusively and forwards the Thor’s system buttons separately. Android still lists the original hardware, and some games require you to select the desired Xbox pads in their controller settings. The seat names and Xbox device descriptors are stable. Android’s controller numbers can differ. Virtual pads carry buttons and sticks; rumble, gyro, Wii pointer and native Wii Remote passthrough are outside this route.
+**Stop routing** drops the virtual controllers and releases the physical pads immediately. Closing the app task or stopping the helper also stops routing. If you manually chose a Club device in an emulator, select your original profile when you return to regular play. For the Mario Kart Wii setup action, use **Restore previous** to undo the game-specific mapping. With built-in controller access and Xbox output, Club routes the assigned Thor controls exclusively and forwards the Thor’s system buttons separately. Android still lists the original hardware, and some games require you to select the desired Xbox pads in their controller settings. The seat names and Xbox device descriptors are stable. Android’s controller numbers can differ. Virtual pads carry buttons and sticks; rumble, gyro, Wii pointer and native Wii Remote passthrough are outside this route.
 
 The emulator menu detects Dolphin, Cemu Plus, ARMSX3, installed Switch port apps and several other emulators, and provides input setup guidance. Per-game support varies. A native Switch port is not a general-purpose Switch emulator.
 
 ## Build and start
 
-Requires the Android SDK (API 34 and build-tools 34.0.0), Java 17, Zig 0.15.x, Android debug keystore, and USB debugging on the Thor. Set `ANDROID_SDK_ROOT`, `JAVA_HOME`, and `ZIG` if the defaults in the scripts do not apply.
+Requires the Android SDK (API 34 and build-tools 34.0.0), Java 17, Zig 0.15.x, Android debug keystore, and USB debugging on the Thor for initial installation. Set `ANDROID_SDK_ROOT`, `JAVA_HOME`, and `ZIG` if the defaults in the scripts do not apply.
 
 ```sh
 scripts/build.sh
 scripts/start.sh
 ```
 
-`start.sh` installs the APK and starts a temporary shell helper using the device’s existing access to Linux gamepad interfaces. It needs no root and makes no firmware changes. USB can be unplugged after startup. Run it again after a reboot if you want to route the built-in pad through a virtual port. The helper only accepts authenticated requests on device loopback and drops routing if it stops hearing from the app. Run `scripts/stop.sh` to stop both the app and helper. Uninstall Controller Club as usual if you no longer want it.
+`start.sh` installs the APK and starts a temporary shell helper using the device’s existing access to Linux gamepad interfaces. It needs no root and makes no firmware changes. USB can be unplugged after installation. On the tested Thor firmware, Club starts its own router after reboot and the first unlock. It restores read access to the built-in controller through the firmware permission service used by AYN Settings. The helper only accepts authenticated requests on device loopback and drops routing if it stops hearing from the app. Run `scripts/stop.sh` to stop both the app and helper. Uninstall Controller Club as usual if you no longer want it.
 
 ## Bottom-screen switching
 
@@ -33,15 +33,15 @@ The Nearby view scans Bluetooth Classic and LE while open. Devices must be adver
 
 ## Quick Settings
 
-Swipe down twice and tap **Controller Club** to open the player lineup on the lower display. If the tile is missing, add it from **Edit tiles**. The app can start its external controller router on its own after a reboot on the tested Thor firmware. In that mode the built-in controls stay on their original Android device as P1, and Club routes external pads to P2–P4. Start routing can be enabled with the Thor alone and routes external controllers as they connect. Run `scripts/start.sh` if you want to remap the built-in Thor controller itself.
+Swipe down twice and tap **Controller Club** to open the player lineup on the lower display. If the tile is missing, add it from **Edit tiles**. After reboot and the first unlock, the app starts its router automatically on the tested Thor firmware, including access to the built-in controls. Start routing can be enabled with the Thor alone and routes external controllers as they connect. On firmware without the AYN permission service, the USB helper remains available for built-in controller access.
 
 ### Mario Kart Wii multiplayer
 
-For the US release, use **Emulators → Dolphin → Mario Kart Wii → Use Club seats**. On first use, select the **Dolphin Emulator** folder in Android’s file picker. With the USB helper running, start routing and launch Mario Kart Wii. Dolphin loads P1 and P2 from the Club lineup, including when you swap the Xbox Nano and the Thor controls. **Restore previous** restores the prior game-specific mappings.
+For the US release, use **Emulators → Dolphin → Mario Kart Wii → Use Club seats**. On first use, select the **Dolphin Emulator** folder in Android’s file picker. With routing ready, start routing and launch Mario Kart Wii. Dolphin loads P1 and P2 from the Club lineup, including when you swap the Xbox Nano and the Thor controls. **Restore previous** restores the prior game-specific mappings.
 
 ### Eden on Android
 
-With Eden closed, open **Emulators → Eden → Set up controls → Use Club seats**, grant access to its folder when asked, then reopen Eden. In **Eden controllers** mode, all four players follow the Club lineup, including an external controller as P1 or the Thor in any slot. Start the USB helper with `scripts/start.sh` to give Club access to the built-in Thor input. USB can be disconnected afterward. The helper must be started again after a reboot.
+With Eden closed, open **Emulators → Eden → Set up controls → Use Club seats**, grant access to its folder when asked, then reopen Eden. In **Eden controllers** mode, all four players follow the Club lineup, including an external controller as P1 or the Thor in any slot. On the tested Thor firmware, Club restores built-in controller access and starts its local router automatically after reboot and first unlock. On other firmware, use `scripts/start.sh` to provide access through the USB helper.
 
 Club sends the four fixed slots over Eden’s local Cemuhook input connection. Stop routing to release external controllers and return the Thor to P1 immediately. The helper continues forwarding the Thor to P1 while routing is off, including after the Club UI closes. Stopping the helper ends this forwarding. **Restore previous** restores the controller settings changed by this setup.
 

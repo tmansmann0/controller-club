@@ -99,6 +99,7 @@ public final class Bridge extends Service {
         connect(37820,localToken);
     }
     private void startLocalRouter() throws IOException {
+        ThorAccess.restore();
         if(localRouter!=null&&localRouter.isAlive())return;
         if(localToken==null){
             byte[] random=new byte[32];new java.security.SecureRandom().nextBytes(random);
@@ -120,7 +121,7 @@ public final class Bridge extends Service {
         reader=new BufferedReader(new InputStreamReader(s.getInputStream(),StandardCharsets.UTF_8));
         writer=new BufferedWriter(new OutputStreamWriter(s.getOutputStream(),StandardCharsets.US_ASCII));
         request("AUTH "+token,false);
-        if(output==Output.EDEN&&!usingLocal)request("EDENIDLE",false);
+        if(output==Output.EDEN)request("EDENIDLE",false);
         steam.announce();
     }
     private void closeConnection(){
@@ -163,7 +164,7 @@ public final class Bridge extends Service {
                 String line=reader.readLine();
                 if("END".equals(line)){
                     steam.setRouting(on&&steamAssigned);
-                    boolean local=usingLocal;
+                    boolean local=usingLocal&&found.stream().noneMatch(pad->pad.builtin);
                     MAIN.post(()->accept(found,on,user,local));return;
                 }
                 if(line==null)throw new EOFException();
