@@ -75,11 +75,11 @@ final class SteamReport {
     String motion(long timestampUs) {
         if(!motionUpdated||!haveAcceleration||!haveGyroscope)return null;
         motionUpdated=false;
-        // Match the controller axes and scales used by Valve's SDL driver.
+        // DSU uses the DS4 motion frame: accel (-X,-Z,+Y), gyro (+X,-Z,-Y).
         return "MOTION " + Bridge.STEAM_PAD_ID + " " + timestampUs + " "
-            + acceleration[0]/16384.0f + " " + acceleration[2]/16384.0f + " " + -acceleration[1]/16384.0f + " "
-            + gyroscope[0]*(2000.0f/32768.0f) + " " + gyroscope[2]*(2000.0f/32768.0f) + " "
-            + gyroscope[1]*(2000.0f/32768.0f);
+            + -acceleration[0]/16384.0f + " " + -acceleration[2]/16384.0f + " " + acceleration[1]/16384.0f + " "
+            + gyroscope[0]*(2000.0f/32768.0f) + " " + -gyroscope[2]*(2000.0f/32768.0f) + " "
+            + -gyroscope[1]*(2000.0f/32768.0f);
     }
 
     private boolean pressed(int mask) { return (buttons & mask) != 0; }

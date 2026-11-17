@@ -93,8 +93,8 @@ final class ControllerMotion {
             if(target==acceleration)haveAcceleration=true;else haveGyroscope=true;
             if(!haveAcceleration||!haveGyroscope||event.timestamp-lastSent<10000000)return;
             lastSent=event.timestamp;
-            bridge.sendSteam("MOTION "+id+" "+event.timestamp/1000+" "+acceleration[0]+" "+acceleration[1]+" "
-                +acceleration[2]+" "+gyroscope[0]+" "+gyroscope[1]+" "+gyroscope[2]);
+            bridge.sendSteam("MOTION "+id+" "+event.timestamp/1000+" "+(-acceleration[0])+" "+(-acceleration[2])+" "
+                +acceleration[1]+" "+gyroscope[0]+" "+(-gyroscope[2])+" "+gyroscope[1]);
         }
         @Override public void onAccuracyChanged(Sensor sensor,int accuracy){}
     }

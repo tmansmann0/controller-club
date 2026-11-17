@@ -21,7 +21,7 @@ public final class SteamReportTest {
         data.putShort((short)16384).putShort((short)-16384).putShort((short)8192);
         if(decoder.accept(frame(0,false,packet))!=null)throw new AssertionError("premature frame");
         if(decoder.accept(frame(1,true,packet))==null)throw new AssertionError("missing controls");
-        String expected="MOTION 1000000000 123456 1.0 0.25 0.5 1000.0 500.0 -1000.0";
+        String expected="MOTION 1000000000 123456 -1.0 -0.25 -0.5 1000.0 -500.0 1000.0";
         if(!expected.equals(decoder.motion(123456)))throw new AssertionError("motion scale or axis mapping");
         if(decoder.motion(123457)!=null)throw new AssertionError("repeated sensor sample");
         byte[] buttons=new byte[36];

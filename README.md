@@ -2,7 +2,7 @@
 
 A bottom-screen controller lineup for Android. Tested on an AYN Thor with Android 13 and firmware 1.0.0.377.
 
-Current input support includes buttons, sticks, triggers, D-pad input, and gyro/accelerometer forwarding over the local Cemuhook (DSU) connection. Motion has been verified from the original Steam Controller over Bluetooth LE and the Thor’s built-in sensors. Other controllers use their own Android-exposed motion sensors when available. The tested Xbox Nano exposes no motion sensor to Android.
+Current input support includes buttons, sticks, triggers, D-pad input, and gyro/accelerometer forwarding over the local Cemuhook (DSU) connection. Motion has been verified from the original Steam Controller over Bluetooth LE and the Thor’s built-in sensors. Motion is converted into the DSU/DS4 coordinate frame using physical units (g and degrees per second), without smoothing or sensitivity multipliers. Other controllers use their own Android-exposed motion sensors when available. The tested Xbox Nano exposes no motion sensor to Android.
 
 Open Controller Club and tap **Nearby** to discover and pair Bluetooth gamepads, then tap a player slot to move or swap a controller. The default puts the Thor first and other controllers in discovery order. Each Joy-Con can be assigned as a sideways pad; **Combine Joy-Cons** sends a left and right half to the same port. Choose **Start routing** to expose occupied seats as **Xbox Controller P1** through **P4**. A game that offers explicit input assignments can use those names to match its player slots. Tap the top display again if a game loses controller focus after you touch the bottom display. Use the **Emulators** menu to switch output modes or open Dolphin or Cemu with their named Club profiles.
 
