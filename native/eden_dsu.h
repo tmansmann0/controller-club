@@ -18,6 +18,7 @@ static DsuClient dsu_clients[DSU_CLIENTS];
 static int dsu_fd=-1;
 static uint32_t dsu_sequence;
 static State dsu_state[4];
+static Motion dsu_motion[4];
 static bool dsu_connected[4];
 
 static void dsu_write(unsigned char *at,uint32_t value,int bytes){
@@ -49,7 +50,7 @@ static void dsu_port_info(unsigned char *packet,int slot,bool connected){
  packet[20]=(unsigned char)slot;
  if(!connected)return;
  packet[21]=2; /* connected */
- packet[22]=1; /* gamepad without full motion */
+ packet[22]=dsu_motion[slot].timestamp_us?2:1;
  packet[23]=1;
  packet[24]=0x02; /* fixed locally administered ID for this player slot */
  packet[29]=(unsigned char)slot;
@@ -84,6 +85,15 @@ static void dsu_send_slot(const struct sockaddr_in *peer,int slot){
  packet[43]=dsu_stick(-state.a[3]);
  packet[54]=(unsigned char)(state.a[5]*255/32767);
  packet[55]=(unsigned char)(state.a[4]*255/32767);
+ Motion motion=connected?dsu_motion[slot]:(Motion){0};
+ for(int i=0;i<8;i++)packet[68+i]=(unsigned char)(motion.timestamp_us>>(8*i));
+ for(int i=0;i<3;i++){
+   uint32_t bits;
+   memcpy(&bits,&motion.acceleration[i],sizeof(bits));
+   dsu_write(packet+76+4*i,bits,4);
+   memcpy(&bits,&motion.gyroscope[i],sizeof(bits));
+   dsu_write(packet+88+4*i,bits,4);
+ }
  dsu_reply(peer,packet,sizeof(packet),DSU_GET_DATA);
 }
 static void dsu_publish(int slot){
@@ -91,11 +101,13 @@ static void dsu_publish(int slot){
    if(dsu_clients[i].expires>now_ms()&&(dsu_clients[i].slots&(1u<<slot)))
      dsu_send_slot(&dsu_clients[i].peer,slot);
 }
-static void dsu_update(int slot,State state,bool connected){
+static void dsu_update(int slot,State state,Motion motion,bool connected){
  if(dsu_fd<0||slot<0||slot>=4)return;
- bool changed=dsu_connected[slot]!=connected||memcmp(&dsu_state[slot],&state,sizeof(state));
+ bool changed=dsu_connected[slot]!=connected||memcmp(&dsu_state[slot],&state,sizeof(state))
+     ||motion.timestamp_us!=dsu_motion[slot].timestamp_us;
  dsu_connected[slot]=connected;
  dsu_state[slot]=state;
+ dsu_motion[slot]=motion;
  if(changed)dsu_publish(slot);
 }
 static bool dsu_start(void){
@@ -111,7 +123,7 @@ static bool dsu_start(void){
 static void dsu_stop(void){
  if(dsu_fd<0)return;
  for(int slot=0;slot<4;slot++)
-   if(dsu_connected[slot])dsu_update(slot,(State){0},false);
+   if(dsu_connected[slot])dsu_update(slot,(State){0},(Motion){0},false);
  close(dsu_fd);
  dsu_fd=-1;
  memset(dsu_clients,0,sizeof(dsu_clients));

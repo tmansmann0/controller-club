@@ -29,6 +29,7 @@ public final class Bridge extends Service {
     Handler worker;
     HandlerThread thread;
     private SteamController steam;
+    private ControllerMotion motion;
     volatile Socket socket;
     volatile java.lang.Process localRouter;
     volatile boolean usingLocal;
@@ -54,6 +55,7 @@ public final class Bridge extends Service {
         startForeground(1,notification(false));
         thread=new HandlerThread("Controller Club bridge");thread.start();worker=new Handler(thread.getLooper());
         steam=new SteamController(this,worker);
+        motion=new ControllerMotion(this,worker);
         worker.post(poll);changed();
     }
     @Override public int onStartCommand(Intent i,int flags,int id){
@@ -145,6 +147,7 @@ public final class Bridge extends Service {
     void lost(){
         closeConnection();
         if(steam!=null)steam.setRouting(false);
+        if(motion!=null)motion.close();
         MAIN.post(()->{if(closed)return; boolean redraw=online||busy; if(online){pads.clear();omitted.clear();Arrays.fill(seats,null);}
             active=false;online=false;busy=false;
             if(redraw){getSystemService(NotificationManager.class).notify(1,notification(false));changed();}
@@ -158,12 +161,14 @@ public final class Bridge extends Service {
             if(first==null)throw new EOFException();
             if(first.startsWith("ERR ")){MAIN.post(()->{if(!closed){error=first.substring(4);busy=false;changed();}});return;}
             if(!first.matches("STATE [0-9]+ [01]"))throw new IOException();
+            Set<Integer> motionSources=new HashSet<>();
             ArrayList<Pad> found=new ArrayList<>();boolean on=first.endsWith(" 1");
             boolean steamAssigned=false;
             for(int i=0;i<=25;i++){
                 String line=reader.readLine();
                 if("END".equals(line)){
                     steam.setRouting(on&&steamAssigned);
+                    motion.sync(found,motionSources);
                     boolean local=usingLocal&&found.stream().noneMatch(pad->pad.builtin);
                     MAIN.post(()->accept(found,on,user,local));return;
                 }
@@ -172,6 +177,8 @@ public final class Bridge extends Service {
                 if(!hasIdentity&&!line.startsWith("PAD "))throw new IOException();
                 String[] f=line.split(" ",hasIdentity?10:9);
                 if(f.length!=(hasIdentity?10:9))throw new IOException();
+                if(!f[4].equals("-1")&&(on||output==Output.EDEN&&f[3].equals("1")))
+                    motionSources.add(Integer.parseInt(f[1]));
                 if(f[1].equals(Integer.toString(STEAM_PAD_ID))&&!f[4].equals("-1"))steamAssigned=true;
                 found.add(new Pad(Integer.parseInt(f[1]),Integer.parseInt(f[2]),f[3].equals("1"),
                     Integer.parseInt(f[6]),Integer.parseInt(f[7]),f[hasIdentity?9:8],
@@ -292,6 +299,6 @@ public final class Bridge extends Service {
         if(current==this)current=null;
         closeConnection();
         java.lang.Process process=localRouter;if(process!=null)process.destroy();
-        worker.removeCallbacksAndMessages(null);worker.post(steam::close);changed();super.onDestroy();
+        worker.removeCallbacksAndMessages(null);worker.post(()->{motion.close();steam.close();});changed();super.onDestroy();
     }
 }

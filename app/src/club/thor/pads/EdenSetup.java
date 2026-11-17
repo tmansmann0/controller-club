@@ -139,6 +139,8 @@ final class EdenSetup {
         fields.put("udp_input_servers","\""+String.join(",",servers)+"\"");
         fields.put("enable_udp_controller\\default","false");
         fields.put("enable_udp_controller","true");
+        fields.put("motion_enabled\\default","false");
+        fields.put("motion_enabled","true");
 
         String[] buttons={"a","b","x","y","lstick","rstick","l","r","zl","zr","plus","minus",
             "dleft","dup","dright","ddown","slleft","srleft","slright","srright","home","screenshot"};
@@ -157,6 +159,8 @@ final class EdenSetup {
                 udpBinding(fields,prefix+"button_"+buttons[i],input+"button:"+codes[i]+"\"");
             udpBinding(fields,prefix+"lstick",input+"axis_x:0,axis_y:1\"");
             udpBinding(fields,prefix+"rstick",input+"axis_x:2,axis_y:3\"");
+            udpBinding(fields,prefix+"motionleft",input+"motion:0\"");
+            udpBinding(fields,prefix+"motionright",input+"motion:0\"");
         }
         return fields;
     }

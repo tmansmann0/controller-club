@@ -28,6 +28,8 @@ final class SteamController {
     private static final byte[] ENTER_VALVE_MODE = {(byte)0xc0,(byte)0x87,3,8,7,0};
     private static final byte[] DISABLE_DIGITAL = command(0x81, 0);
     private static final byte[] DISABLE_TRACKPADS = command(0x87, 9, 49, 2, 0, 7, 7, 0, 8, 7, 0);
+    private static final byte[] ENABLE_MOTION = command(0x87,3,48,24,0);
+    private static final byte[] DISABLE_MOTION = command(0x87,3,48,0,0);
     private static final byte[] RESTORE_DIGITAL = command(0x85, 0);
     private static final byte[] RESTORE_TRACKPADS = command(0x8e, 0);
     private final Bridge bridge;
@@ -44,7 +46,7 @@ final class SteamController {
     private BluetoothGattCharacteristic report;
     private String identity, previousInput;
     private SteamReport decoder = new SteamReport();
-    private boolean subscribed, wanted, mode, writing, closing;
+    private boolean subscribed, wanted, mode, writing, closing, motionReceived;
     private long retryAt;
     private String lastAttempt;
     private String preferredAddress;
@@ -214,10 +216,12 @@ final class SteamController {
         if (!subscribed || writing || !commands.isEmpty() || mode == wanted) return;
         mode = wanted;
         previousInput = null;
+        motionReceived=false;
         decoder = new SteamReport();
         if(mode)commands.add(ENTER_VALVE_MODE);
         commands.add(mode ? DISABLE_DIGITAL : RESTORE_DIGITAL);
         commands.add(mode ? DISABLE_TRACKPADS : RESTORE_TRACKPADS);
+        commands.add(mode ? ENABLE_MOTION : DISABLE_MOTION);
         writeNext();
     }
 
@@ -326,6 +330,12 @@ final class SteamController {
                 if(previousInput==null)android.util.Log.i("ClubSteam","Valve gamepad reports received");
                 previousInput=next;
                 bridge.sendSteam(next);
+            }
+            String motion=decoder.motion(SystemClock.elapsedRealtimeNanos()/1000);
+            if(motion!=null){
+                if(!motionReceived)android.util.Log.i("ClubMotion","Steam Controller gyro and accelerometer reports received");
+                motionReceived=true;
+                bridge.sendSteam(motion);
             }
         });
     }

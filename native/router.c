@@ -5,6 +5,7 @@
 #include <glob.h>
 #include <linux/input.h>
 #include <linux/uinput.h>
+#include <math.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
@@ -32,6 +33,11 @@ static const int system_key[]={KEY_HOME,KEY_VOLUMEDOWN,KEY_VOLUMEUP,KEY_BACK,KEY
 static const int key[KEYS]={BTN_SOUTH,BTN_EAST,BTN_NORTH,BTN_WEST,BTN_TL,BTN_TR,BTN_TL2,BTN_TR2,BTN_SELECT,BTN_START,BTN_THUMBL,BTN_THUMBR,BTN_DPAD_UP,BTN_DPAD_DOWN,BTN_MODE};
 typedef struct {int a[AXES]; unsigned k;} State;
 typedef struct {
+ uint64_t timestamp_us;
+ float acceleration[3], gyroscope[3];
+} Motion;
+typedef struct {
+ Motion motion;
  int fd,serial,slot,side,style,vendor,product; bool grabbed,builtin,drop; dev_t dev; ino_t inode;
  char path[96], name[96], unique[96]; int raw[ABS_MAX+1]; struct input_absinfo abs[ABS_MAX+1];
  unsigned char caps[BITS(ABS_MAX)], keys[BITS(KEY_MAX)];
@@ -39,6 +45,7 @@ typedef struct {
 static Pad pads[MAX];
 static int vfd[4]={-1,-1,-1,-1}, nextid=1, rev=0;
 static State previous[4], steam_state;
+static Motion steam_motion;
 enum Output { OUTPUT_PROFILES, OUTPUT_XBOX, OUTPUT_EDEN };
 static enum Output output;
 static bool direct_active;
@@ -159,14 +166,16 @@ static State map(Pad *p){
 }
 static void push_slot(int n){
  if(n<0||(output!=OUTPUT_EDEN&&vfd[n]<0))return;
- State s={0}, old=previous[n]; bool changed=false, connected=false;
+ State s={0}, old=previous[n]; Motion motion={0}; bool changed=false, connected=false;
  for(int i=0;i<MAX;i++)if(pads[i].fd>=0&&pads[i].slot==n){
    connected=true;
+   if(pads[i].motion.timestamp_us>motion.timestamp_us)motion=pads[i].motion;
    State q=map(&pads[i]);s.k|=q.k;
    for(int a=0;a<AXES;a++)if(abs(q.a[a])>abs(s.a[a]))s.a[a]=q.a[a];
  }
- if(steam_slot==n&&steam_present){s=steam_state;connected=true;}
- if(output==OUTPUT_EDEN){dsu_update(n,s,connected);return;}
+ if(steam_slot==n&&steam_present){s=steam_state;motion=steam_motion;connected=true;}
+ dsu_update(n,s,motion,connected);
+ if(output==OUTPUT_EDEN)return;
  const int *axis=output==OUTPUT_XBOX?xbox_axis:club_axis;
  for(int a=0;a<AXES;a++)if(s.a[a]!=old.a[a]){emit(vfd[n],EV_ABS,axis[a],s.a[a]);changed=true;}
  for(int k=0;k<KEYS;k++)if((k<12||k==14)&&((s.k^old.k)&(1u<<k))){
@@ -196,6 +205,7 @@ static void off(void){
  dsu_stop();
  steam_slot=-1;
  memset(&steam_state,0,sizeof(steam_state));
+ memset(&steam_motion,0,sizeof(steam_motion));
  for(int i=0;i<MAX;i++){
    if(pads[i].grabbed)ioctl(pads[i].fd,EVIOCGRAB,0);
    pads[i].grabbed=false; pads[i].slot=-1;
@@ -209,6 +219,7 @@ static void eden_idle(void){
  direct_active=false;
  steam_slot=-1;
  memset(&steam_state,0,sizeof(steam_state));
+ memset(&steam_motion,0,sizeof(steam_motion));
  for(int i=0;i<MAX;i++){
    Pad *p=&pads[i];
    if(p->grabbed)ioctl(p->fd,EVIOCGRAB,0);
@@ -358,8 +369,8 @@ static void apply(int fd,char *cmd,enum Output next_output){
    for(int i=0;i<MAX;i++)if(pads[i].fd>=0&&pads[i].builtin)thor=true;
    if(!thor){dprintf(fd,"ERR Connect USB and restart the helper to enable all Eden player slots\n");return;}
  }
- if(eden&&!dsu_start()){dprintf(fd,"ERR Eden controller port is unavailable\n");return;}
- if(!eden)dsu_stop();
+ if(!dsu_start()&&eden){dprintf(fd,"ERR Eden controller port is unavailable\n");return;}
+
  for(int s=0;s<4;s++){
    if(output!=next_output||(xbox&&!count[s])){
      destroy_virtual(&vfd[s]);memset(&previous[s],0,sizeof(previous[s]));
@@ -390,6 +401,31 @@ static void apply(int fd,char *cmd,enum Output next_output){
  status(fd);return;
  bad: dprintf(fd,"ERR Invalid or stale player assignment\n");
 }
+static void motion_command(const char *command){
+ int id,consumed=0;
+ unsigned long long timestamp;
+ Motion motion={0};
+ if(sscanf(command,"%d %llu %f %f %f %f %f %f %n",&id,&timestamp,
+      &motion.acceleration[0],&motion.acceleration[1],&motion.acceleration[2],
+      &motion.gyroscope[0],&motion.gyroscope[1],&motion.gyroscope[2],&consumed)!=8
+      ||command[consumed]||timestamp==0)return;
+ for(int i=0;i<3;i++)
+   if(!isfinite(motion.acceleration[i])||fabsf(motion.acceleration[i])>32
+      ||!isfinite(motion.gyroscope[i])||fabsf(motion.gyroscope[i])>8000)return;
+ motion.timestamp_us=(uint64_t)timestamp;
+ if(id==STEAM_PAD_ID&&steam_present){
+   if(motion.timestamp_us<=steam_motion.timestamp_us)return;
+   steam_motion=motion;
+   push_slot(steam_slot);
+   return;
+ }
+ for(int i=0;i<MAX;i++)if(pads[i].fd>=0&&pads[i].serial==id){
+   if(motion.timestamp_us<=pads[i].motion.timestamp_us)return;
+   pads[i].motion=motion;
+   push_slot(pads[i].slot);
+   return;
+ }
+}
 /* Messages below come only from the authenticated app connection. */
 static void steam_command(const char *command){
  if(!strncmp(command,"STEAM ADD ",10)){
@@ -399,7 +435,8 @@ static void steam_command(const char *command){
  }else if(!strcmp(command,"STEAM REMOVE")){
    int previous_slot=steam_slot;
    steam_present=false;steam_slot=-1;rev++;
-   memset(&steam_state,0,sizeof(steam_state));push_slot(previous_slot);
+   memset(&steam_state,0,sizeof(steam_state));
+ memset(&steam_motion,0,sizeof(steam_motion));push_slot(previous_slot);
  }else if(!strncmp(command,"STEAM INPUT ",12)&&steam_present&&steam_slot>=0){
    State input={0};
    if(sscanf(command+12,"%u %d %d %d %d %d %d %d %d",&input.k,
@@ -455,6 +492,7 @@ int main(int argc,char **argv){
          else if(!strncmp(in,"XBOX ",5))apply(fd,in+5,OUTPUT_XBOX);
          else if(!strcmp(in,"EDEN"))apply(fd,in+4,OUTPUT_EDEN);
          else if(!strncmp(in,"EDEN ",5))apply(fd,in+5,OUTPUT_EDEN);
+         else if(!strncmp(in,"MOTION ",7))motion_command(in+7);
          else if(!strncmp(in,"STEAM ",6))steam_command(in);
          else dprintf(fd,"ERR Unknown request\n");
          if(auth)last=now_ms();

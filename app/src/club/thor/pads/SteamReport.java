@@ -4,6 +4,8 @@ package club.thor.pads;
 final class SteamReport {
     private final byte[] packet = new byte[144];
     private int segment;
+    private boolean haveAcceleration, haveGyroscope, motionUpdated;
+    private final int[] acceleration=new int[3], gyroscope=new int[3];
     private int buttons, triggerL, triggerR, x, y, leftX, leftY, rightX, rightY;
 
     String accept(byte[] report) {
@@ -42,7 +44,19 @@ final class SteamReport {
         if ((flags & 0x40) != 0) offset += 3;
         if ((flags & 0x80) != 0) { x = signed(offset); y = signed(offset+2); offset += 4; }
         if ((flags & 0x100) != 0) { leftX = signed(offset); leftY = signed(offset+2); offset += 4; }
-        if ((flags & 0x200) != 0) { rightX = signed(offset); rightY = signed(offset+2); }
+        if ((flags & 0x200) != 0) { rightX = signed(offset); rightY = signed(offset+2); offset += 4; }
+        motionUpdated=false;
+        if ((flags & 0x400) != 0) {
+            for(int i=0;i<3;i++)acceleration[i]=signed(offset+2*i);
+            offset+=6;
+            haveAcceleration=true;
+            motionUpdated=true;
+        }
+        if ((flags & 0x800) != 0) {
+            for(int i=0;i<3;i++)gyroscope[i]=signed(offset+2*i);
+            haveGyroscope=true;
+            motionUpdated=true;
+        }
         int[] masks = {0x80,0x20,0x10,0x40,8,4,2,1,0x1000,0x4000,0x400000,0x40000,0,0,0x2000};
         int keys = 0;
         for (int i = 0; i < masks.length; i++) if ((buttons & masks[i]) != 0) keys |= 1 << i;
@@ -56,6 +70,16 @@ final class SteamReport {
         return "STEAM INPUT " + keys + " " + x + " " + -y + " "
                 + (touchingRight ? rightX : 0) + " " + (touchingRight ? -rightY : 0) + " "
                 + (pressed(2) ? 32767 : triggerL) + " " + (pressed(1) ? 32767 : triggerR) + " " + dx + " " + dy;
+    }
+
+    String motion(long timestampUs) {
+        if(!motionUpdated||!haveAcceleration||!haveGyroscope)return null;
+        motionUpdated=false;
+        // Match the controller axes and scales used by Valve's SDL driver.
+        return "MOTION " + Bridge.STEAM_PAD_ID + " " + timestampUs + " "
+            + acceleration[0]/16384.0f + " " + acceleration[2]/16384.0f + " " + -acceleration[1]/16384.0f + " "
+            + gyroscope[0]*(2000.0f/32768.0f) + " " + gyroscope[2]*(2000.0f/32768.0f) + " "
+            + gyroscope[1]*(2000.0f/32768.0f);
     }
 
     private boolean pressed(int mask) { return (buttons & mask) != 0; }
