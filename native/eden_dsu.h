@@ -92,7 +92,7 @@ static void dsu_publish(int slot){
      dsu_send_slot(&dsu_clients[i].peer,slot);
 }
 static void dsu_update(int slot,State state,bool connected){
- if(dsu_fd<0||slot<1||slot>=4)return;
+ if(dsu_fd<0||slot<0||slot>=4)return;
  bool changed=dsu_connected[slot]!=connected||memcmp(&dsu_state[slot],&state,sizeof(state));
  dsu_connected[slot]=connected;
  dsu_state[slot]=state;
@@ -110,7 +110,7 @@ static bool dsu_start(void){
 }
 static void dsu_stop(void){
  if(dsu_fd<0)return;
- for(int slot=1;slot<4;slot++)
+ for(int slot=0;slot<4;slot++)
    if(dsu_connected[slot])dsu_update(slot,(State){0},false);
  close(dsu_fd);
  dsu_fd=-1;
@@ -125,7 +125,7 @@ static void dsu_register(const struct sockaddr_in *peer,unsigned slots){
  }
  if(entry<0)return;
  dsu_clients[entry]=(DsuClient){*peer,slots,now+9000};
- for(int slot=1;slot<4;slot++)
+ for(int slot=0;slot<4;slot++)
    if(dsu_connected[slot]&&(slots&(1u<<slot)))dsu_send_slot(peer,slot);
 }
 static void dsu_receive(void){
@@ -157,7 +157,7 @@ static void dsu_receive(void){
      }
    }else if(type==DSU_GET_DATA&&bytes==28){
      unsigned flags=input[20],slot=input[21];
-     if(flags==0)dsu_register(&peer,0x0e);
+     if(flags==0)dsu_register(&peer,0x0f);
      else if(flags==1&&slot<4)dsu_register(&peer,1u<<slot);
      else if(flags==2&&input[22]==0x02&&input[27]<4)dsu_register(&peer,1u<<input[27]);
    }

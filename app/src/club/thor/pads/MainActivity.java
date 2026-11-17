@@ -433,7 +433,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
     private void edenOptions(){
         show(new AlertDialog.Builder(this,android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Eden controller setup")
-            .setMessage("The Thor stays on P1. P2–P4 follow the Club lineup when routing is on. Close Eden before applying the settings, then reopen it.")
+            .setMessage("All four Eden players follow the Club lineup. Stopping routing returns the Thor to P1. Connect USB and start the helper before using this mode. Close Eden before applying the settings, then reopen it.")
             .setPositiveButton("Use Club seats",(d,w)->editEden(false))
             .setNeutralButton("Restore previous",(d,w)->editEden(true))
             .setNegativeButton("Close",null));

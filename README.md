@@ -41,7 +41,9 @@ For the US release, use **Emulators → Dolphin → Mario Kart Wii → Use Club 
 
 ### Eden on Android
 
-With Eden closed, open **Emulators → Eden → Set up controls → Use Club seats**, grant access to its folder when asked, then reopen Eden. The **Eden · Thor P1** output keeps the built-in Thor controls direct. Club sends P2–P4 to fixed slots over Eden’s local Cemuhook input connection, so swapping or reconnecting controllers in Club needs no mapping in Eden. Stop routing to release the extra controllers. Eden keeps the slots configured for next time and the Thor continues to work as P1. **Restore previous** restores the controller settings changed by this setup.
+With Eden closed, open **Emulators → Eden → Set up controls → Use Club seats**, grant access to its folder when asked, then reopen Eden. In **Eden controllers** mode, all four players follow the Club lineup, including an external controller as P1 or the Thor in any slot. Start the USB helper with `scripts/start.sh` to give Club access to the built-in Thor input. USB can be disconnected afterward. The helper must be started again after a reboot.
+
+Club sends the four fixed slots over Eden’s local Cemuhook input connection. Stop routing to release external controllers and return the Thor to P1 immediately. The helper continues forwarding the Thor to P1 while routing is off, including after the Club UI closes. Stopping the helper ends this forwarding. **Restore previous** restores the controller settings changed by this setup.
 
 The tested Eden build is the project’s signed [controller/display reconnection fix build](https://git.eden-emu.dev/eden-ci/pr/releases/tag/4571-16eedd0344), installed as version `737ab4d`. The earlier tested build `1f6734c` crashed or froze when Android recreated its activity after a Bluetooth keyboard connected or disconnected. The original Steam Controller exposes a keyboard that can trigger this behavior.
 

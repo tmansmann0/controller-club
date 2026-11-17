@@ -204,6 +204,22 @@ static void off(void){
  stop_system_keys();
  memset(previous,0,sizeof(previous));
 }
+static void eden_idle(void){
+ if(output!=OUTPUT_EDEN){off();return;}
+ direct_active=false;
+ steam_slot=-1;
+ memset(&steam_state,0,sizeof(steam_state));
+ for(int i=0;i<MAX;i++){
+   Pad *p=&pads[i];
+   if(p->grabbed)ioctl(p->fd,EVIOCGRAB,0);
+   p->grabbed=false;
+   p->slot=p->fd>=0&&p->builtin?0:-1;
+   p->style=0;
+   if(p->slot==0)snapshot(p);
+ }
+ stop_system_keys();
+ for(int slot=0;slot<4;slot++)push_slot(slot);
+}
 static void forget(Pad *p){
  if(p->builtin&&p->grabbed)stop_system_keys();
  int slot=p->slot; close(p->fd); memset(p,0,sizeof(*p));p->fd=-1;p->slot=-1;rev++;push_slot(slot);
@@ -321,7 +337,7 @@ static void apply(int fd,char *cmd,enum Output next_output){
  int next_steam_slot=-1;
  for(int i=0;i<MAX;i++)slots[i]=-1;
  while(*cmd){
-   if(sscanf(cmd," %d:%d:%d%n",&id,&slot,&style,&end)!=3||slot<0||slot>3||style<0||style>1||(eden&&slot==0))goto bad;
+   if(sscanf(cmd," %d:%d:%d%n",&id,&slot,&style,&end)!=3||slot<0||slot>3||style<0||style>1)goto bad;
    if(id==STEAM_PAD_ID){
      if(!steam_present||style||next_steam_slot>=0)goto bad;
      next_steam_slot=slot;count[slot]++;
@@ -329,7 +345,7 @@ static void apply(int fd,char *cmd,enum Output next_output){
      continue;
    }
    int i=0;while(i<MAX&&(pads[i].fd<0||pads[i].serial!=id))i++;
-   if(i==MAX||slots[i]>=0||(eden&&pads[i].builtin))goto bad;
+   if(i==MAX||slots[i]>=0)goto bad;
    if(style && (!pads[i].side||(halves[slot]&(1<<pads[i].side))))goto bad;
    if(style)halves[slot]|=1<<pads[i].side;
    slots[i]=slot;styles[i]=style;count[slot]++;
@@ -337,6 +353,11 @@ static void apply(int fd,char *cmd,enum Output next_output){
  }
  bool any=false;for(int s=0;s<4;s++){if(count[s])any=true;if(count[s]>1&&(count[s]!=2||halves[s]!=6))goto bad;}
  if(!any&&!eden)goto bad;
+ if(eden){
+   bool thor=false;
+   for(int i=0;i<MAX;i++)if(pads[i].fd>=0&&pads[i].builtin)thor=true;
+   if(!thor){dprintf(fd,"ERR Connect USB and restart the helper to enable all Eden player slots\n");return;}
+ }
  if(eden&&!dsu_start()){dprintf(fd,"ERR Eden controller port is unavailable\n");return;}
  if(!eden)dsu_stop();
  for(int s=0;s<4;s++){
@@ -351,7 +372,7 @@ static void apply(int fd,char *cmd,enum Output next_output){
  direct_active=eden;
  for(int i=0;i<MAX;i++)if(pads[i].fd>=0){
    Pad *p=&pads[i];
-   bool grab=slots[i]>=0&&(!p->builtin||xbox);
+   bool grab=slots[i]>=0&&(!p->builtin||xbox||eden);
    if(p->builtin&&grab&&system_fd<0&&(system_fd=make_system_keys())<0){
      off();dprintf(fd,"ERR Could not preserve Thor system buttons\n");return;
    }
@@ -411,7 +432,7 @@ int main(int argc,char **argv){
  while(!done){
    long long now=now_ms();
    if(now-scanned>=500){scan();scanned=now;}
-   if(fd>=0 && now-last>6500){close(fd);fd=-1;off();steam_present=false;}
+   if(fd>=0 && now-last>6500){close(fd);fd=-1;eden_idle();steam_present=false;}
    struct pollfd f[MAX+3];f[MAX+2]=(struct pollfd){dsu_fd,POLLIN,0};f[0]=(struct pollfd){server,POLLIN,0};f[1]=(struct pollfd){fd,POLLIN,0};
    for(int i=0;i<MAX;i++)f[i+2]=(struct pollfd){pads[i].fd,POLLIN,0};
    if(poll(f,MAX+3,160)<0)continue;
@@ -424,7 +445,11 @@ int main(int argc,char **argv){
          in[used]=0;
          if(!auth){if(used!=69||memcmp(in,"AUTH ",5)||memcmp(in+5,token,64))closeit=true;else{auth=true;status(fd);}}
          else if(!strcmp(in,"STATUS"))status(fd);
-         else if(!strcmp(in,"OFF")){off();status(fd);}
+         else if(!strcmp(in,"OFF")){eden_idle();status(fd);}
+         else if(!strcmp(in,"EDENIDLE")){
+           if(!routing()&&dsu_start()){output=OUTPUT_EDEN;eden_idle();}
+           status(fd);
+         }
          else if(!strcmp(in,"DIRECT")){off();direct_active=true;status(fd);}
          else if(!strncmp(in,"ROUTE ",6))apply(fd,in+6,OUTPUT_PROFILES);
          else if(!strncmp(in,"XBOX ",5))apply(fd,in+5,OUTPUT_XBOX);
@@ -436,7 +461,7 @@ int main(int argc,char **argv){
          used=0;
        } else if(used>=sizeof(in)-1||b[i]<32||b[i]>126)closeit=true;else in[used++]=b[i];
      }
-     if(closeit){close(fd);fd=-1;off();steam_present=false;}
+     if(closeit){close(fd);fd=-1;eden_idle();steam_present=false;}
    }
    if(f[0].revents&POLLIN){
      int c=accept4(server,NULL,NULL,SOCK_CLOEXEC);

@@ -119,7 +119,7 @@ final class EdenSetup {
     }
 
     static Map<String,String> configuredMapping(String controls) throws IOException {
-        Map<String,String> fields=thorMapping();
+        Map<String,String> fields=new LinkedHashMap<>();
         String current=value(controls,"udp_input_servers");
         if(current==null||"true".equals(value(controls,"udp_input_servers\\default")))current="127.0.0.1:26760";
         current=current.replaceAll("^\"|\"$","").trim();
@@ -144,7 +144,7 @@ final class EdenSetup {
             "dleft","dup","dright","ddown","slleft","srleft","slright","srright","home","screenshot"};
         int[] codes={0x2000,0x4000,0x1000,0x8000,2,4,0x400,0x800,0x100,0x200,8,1,
             0x80,0x10,0x20,0x40,0x100,0x200,0x100,0x200,0x40000,0x80000};
-        for(int slot=1;slot<4;slot++){
+        for(int slot=0;slot<4;slot++){
             String prefix="player_"+slot+"_";
             fields.put(prefix+"type\\default","false");
             fields.put(prefix+"type","0");

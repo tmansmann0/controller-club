@@ -34,7 +34,7 @@ public final class Bridge extends Service {
     volatile boolean usingLocal;
     boolean externalOnly;
     enum Output {
-        XBOX("Xbox controllers"), PROFILES("Dolphin / Cemu profiles"), EDEN("Eden · Thor P1");
+        XBOX("Xbox controllers"), PROFILES("Dolphin / Cemu profiles"), EDEN("Eden controllers");
         final String label;
         Output(String label){this.label=label;}
     }
@@ -120,6 +120,7 @@ public final class Bridge extends Service {
         reader=new BufferedReader(new InputStreamReader(s.getInputStream(),StandardCharsets.UTF_8));
         writer=new BufferedWriter(new OutputStreamWriter(s.getOutputStream(),StandardCharsets.US_ASCII));
         request("AUTH "+token,false);
+        if(output==Output.EDEN&&!usingLocal)request("EDENIDLE",false);
         steam.announce();
     }
     private void closeConnection(){
@@ -219,7 +220,7 @@ public final class Bridge extends Service {
     }
     Pad find(int id){for(Pad p:pads)if(p.id==id)return p;return null;}
     int seat(int id){for(int s=0;s<4;s++)if(seats[s]!=null)for(int x:seats[s])if(x==id)return s;return -1;}
-    boolean directP1(){return externalOnly||output==Output.EDEN;}
+    boolean directP1(){return externalOnly;}
     private boolean hasThor(){
         for(int id:InputDevice.getDeviceIds()){
             InputDevice device=InputDevice.getDevice(id);
