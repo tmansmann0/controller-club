@@ -39,7 +39,7 @@ final class ThorAccess {
                 return device.canRead();
             }catch(Exception e){
                 android.util.Log.w("ClubAccess","Thor input permission is unavailable",e);
-                return false;
+                // Nodes can disappear or be unreadable during boot. Keep looking.
             }
         }
         return false;

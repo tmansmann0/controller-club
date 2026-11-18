@@ -3,7 +3,6 @@ package club.thor.pads;
 import android.app.*;
 import android.content.*;
 import android.os.*;
-import android.view.InputDevice;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -33,7 +32,9 @@ public final class Bridge extends Service {
     volatile Socket socket;
     volatile java.lang.Process localRouter;
     volatile boolean usingLocal;
-    boolean externalOnly;
+    volatile boolean externalOnly;
+    private long lastAccessAttempt;
+    private static final String ASSIGNMENT="assignment.";
     enum Output {
         XBOX("Xbox controllers"), PROFILES("Dolphin / Cemu profiles"), EDEN("Eden controllers");
         final String label;
@@ -79,6 +80,10 @@ public final class Bridge extends Service {
                 connectRouter();
             } catch(IOException e){lost();}
         } else request("STATUS",false);
+        if(usingLocal&&externalOnly&&SystemClock.elapsedRealtime()-lastAccessAttempt>=5000){
+            lastAccessAttempt=SystemClock.elapsedRealtime();
+            ThorAccess.restore();
+        }
         steam.tick();
         if(!closed)worker.postDelayed(this,1200);
     }};
@@ -206,38 +211,48 @@ public final class Bridge extends Service {
         changed();
     }
     private void fillSeats(){
-        if(directP1()){
-            if(seats[0]!=null){
-                int next=open();
-                if(next>=0&&Arrays.stream(seats[0]).noneMatch(id->find(id).builtin))seats[next]=seats[0];
-                seats[0]=null;
+        SharedPreferences settings=getSharedPreferences("routing",MODE_PRIVATE);
+        // Saved assignments describe Club players, independently of Android controller numbers.
+        // Keep disconnected players reserved so reconnect order cannot steal their slots.
+        Set<Integer> reserved=new HashSet<>();
+        for(Map.Entry<String,?> entry:settings.getAll().entrySet())
+            if(entry.getKey().startsWith(ASSIGNMENT)&&entry.getValue() instanceof Integer){
+                int slot=(Integer)entry.getValue();
+                if(slot>=0&&slot<4)reserved.add(slot);
             }
-            for(int s=1;s<4;s++)if(seats[s]!=null&&find(seats[s][0]).builtin)seats[s]=null;
+        Arrays.fill(seats,null);
+        omitted.clear();
+        for(Pad p:pads){
+            int slot=settings.getInt(assignmentKey(p),-2);
+            if(slot==-1)omitted.add(p.id);
+            else if(slot>=0&&slot<4){
+                int[] previous=seats[slot];
+                if(previous==null)seats[slot]=new int[]{p.id};
+                else if(previous.length==1&&p.side!=0&&find(previous[0]).side==3-p.side)
+                    seats[slot]=new int[]{previous[0],p.id};
+            }
         }
         int steamSeat=getSharedPreferences("steam",MODE_PRIVATE).getInt("seat",-1);
-        if(steamSeat>=(directP1()?1:0)&&steamSeat<4&&!omitted.contains(STEAM_PAD_ID)
-                &&find(STEAM_PAD_ID)!=null&&seat(STEAM_PAD_ID)<0&&seats[steamSeat]==null)
-            seats[steamSeat]=new int[]{STEAM_PAD_ID};
+        Pad steamPad=find(STEAM_PAD_ID);
+        if(steamPad!=null&&!settings.contains(assignmentKey(steamPad))&&steamSeat>=0&&steamSeat<4
+                &&seats[steamSeat]==null)seats[steamSeat]=new int[]{STEAM_PAD_ID};
         ArrayList<Pad> defaults=new ArrayList<>(pads);
         defaults.sort(Comparator.comparing((Pad p)->!p.builtin).thenComparingInt(p->p.id));
-        for(Pad p:defaults)
-            if((!directP1()||!p.builtin)&&!omitted.contains(p.id)&&seat(p.id)<0){
-                int s=open();
-                if(s>=0)seats[s]=new int[]{p.id};
+        for(Pad p:defaults)if(!omitted.contains(p.id)&&seat(p.id)<0){
+            for(int slot=0;slot<4;slot++)if(seats[slot]==null&&!reserved.contains(slot)){
+                seats[slot]=new int[]{p.id};break;
             }
+        }
+    }
+    private String assignmentKey(Pad p){
+        if(p.builtin)return ASSIGNMENT+"thor";
+        if(p.id==STEAM_PAD_ID)return ASSIGNMENT+"steam";
+        return ASSIGNMENT+(p.identity.isEmpty()?p.vendor+":"+p.product+":"+p.name:p.identity);
     }
     Pad find(int id){for(Pad p:pads)if(p.id==id)return p;return null;}
     int seat(int id){for(int s=0;s<4;s++)if(seats[s]!=null)for(int x:seats[s])if(x==id)return s;return -1;}
-    boolean directP1(){return externalOnly;}
-    private boolean hasThor(){
-        for(int id:InputDevice.getDeviceIds()){
-            InputDevice device=InputDevice.getDevice(id);
-            if(device!=null&&"Odin Controller".equals(device.getName()))return true;
-        }
-        return false;
-    }
-    int open(){for(int i=directP1()?1:0;i<4;i++)if(seats[i]==null)return i;return -1;}
-    boolean canRoute(){return any()||directP1()&&hasThor();}
+    int open(){for(int i=0;i<4;i++)if(seats[i]==null)return i;return -1;}
+    boolean canRoute(){return any();}
     boolean any(){for(int[] a:seats)if(a!=null)return true;return false;}
     int pairSeat(){for(int i=0;i<4;i++)if(seats[i]!=null&&seats[i].length==2)return i;return -1;}
     void assign(int s,Pad p){
@@ -268,6 +283,18 @@ public final class Bridge extends Service {
         int[] a=seats[s];seats[s]=new int[]{a[0]};seats[next]=new int[]{a[1]};assignmentChanged();
     }
     void assignmentChanged(){
+        SharedPreferences.Editor saved=getSharedPreferences("routing",MODE_PRIVATE).edit();
+        // An explicit assignment replaces an older reservation, including an offline pad.
+        for(Map.Entry<String,?> entry:getSharedPreferences("routing",MODE_PRIVATE).getAll().entrySet()){
+            if(!entry.getKey().startsWith(ASSIGNMENT)||!(entry.getValue() instanceof Integer))continue;
+            int slot=(Integer)entry.getValue();
+            if(slot<0||slot>=4||seats[slot]==null)continue;
+            boolean retained=false;
+            for(int id:seats[slot])if(entry.getKey().equals(assignmentKey(find(id))))retained=true;
+            if(!retained)saved.putInt(entry.getKey(),-1);
+        }
+        for(Pad p:pads)saved.putInt(assignmentKey(p),seat(p.id));
+        saved.apply();
         int steamSeat=seat(STEAM_PAD_ID);
         if(steamSeat>=0||omitted.contains(STEAM_PAD_ID))
             getSharedPreferences("steam",MODE_PRIVATE).edit().putInt("seat",steamSeat).apply();

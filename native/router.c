@@ -297,7 +297,9 @@ static void scan(void){
    p.inode=st.st_ino;p.dev=st.st_rdev;p.serial=nextid++;
    snprintf(p.path,sizeof(p.path),"%s",path);
    ioctl(fd,EVIOCGBIT(EV_ABS,sizeof(p.caps)),p.caps);
+   if(output==OUTPUT_EDEN&&!routing()&&p.builtin)p.slot=0;
    snapshot(&p);pads[idx]=p;rev++;
+   if(p.slot>=0)push_slot(p.slot);
  }
  globfree(&g);
 }
@@ -364,11 +366,6 @@ static void apply(int fd,char *cmd,enum Output next_output){
  }
  bool any=false;for(int s=0;s<4;s++){if(count[s])any=true;if(count[s]>1&&(count[s]!=2||halves[s]!=6))goto bad;}
  if(!any&&!eden)goto bad;
- if(eden){
-   bool thor=false;
-   for(int i=0;i<MAX;i++)if(pads[i].fd>=0&&pads[i].builtin)thor=true;
-   if(!thor){dprintf(fd,"ERR Connect USB and restart the helper to enable all Eden player slots\n");return;}
- }
  if(!dsu_start()&&eden){dprintf(fd,"ERR Eden controller port is unavailable\n");return;}
 
  for(int s=0;s<4;s++){

@@ -117,8 +117,6 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
                         }
                     }
                 }
-            } else if(online&&b.directP1()&&s==0){
-                title="Thor controls";detail="Direct input";type="thor";colorKey="controller.thor";
             } else if(!online&&s<androidPads.size()){
                 InputDevice d=androidPads.get(s);title=d.getName().equals("Odin Controller")?"Thor controls":d.getName();
                 detail="Android #"+d.getControllerNumber();
@@ -131,8 +129,8 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
             cards[s]=new ClubUi.Card(title,detail,type,savedColor("seat."+s,ClubUi.SEAT[s]),savedColor(colorKey,0),savedColor(rightKey,0));
         }
         String status=!online?"Setup needed for routing · connected pads shown":
-          b.busy?"Updating player slots…":!b.error.isEmpty()?b.error:on?(b.directP1()?"Thor P1 · tap the game screen to play":b.output.label+" · tap the game screen to play"):
-          b.directP1()?"Thor controls direct · external routing ready":b.pads.size()+" connected · tap a player to assign";
+          b.busy?"Updating player slots…":!b.error.isEmpty()?b.error:on?(b.output.label+" · tap the game screen to play"):
+          b.externalOnly?"Choose any player slot · retrying Thor access":b.pads.size()+" connected · tap a player to assign";
         boolean paired=online&&b.pairSeat()>=0;
         boolean canCombine=online&&b.pads.stream().anyMatch(p->p.side==1)
             &&b.pads.stream().anyMatch(p->p.side==2);
@@ -196,7 +194,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
     @Override public void toggle(){Bridge b=ready();if(b==null)return;if(b.active)b.stopRouting();else if(b.canRoute())b.sendRoute();else msg("No players assigned","Connect a controller, then tap a player slot to assign it.");}
     @Override public void choose(int slot){
         Bridge b=Bridge.current;
-        boolean canAssign=b!=null&&b.online&&!(b.directP1()&&slot==0);
+        boolean canAssign=b!=null&&b.online;
         android.widget.LinearLayout panel=new android.widget.LinearLayout(this);
         panel.setOrientation(android.widget.LinearLayout.VERTICAL);
         panel.setPadding(ClubUi.dp(this,18),ClubUi.dp(this,16),ClubUi.dp(this,18),ClubUi.dp(this,12));
@@ -209,7 +207,6 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
             scroll.addView(rows);
             panel.addView(scroll,new android.widget.LinearLayout.LayoutParams(-1,ClubUi.dp(this,Math.min(250,Math.max(72,b.pads.size()*64)))));
             for(Bridge.Pad pad:new ArrayList<>(b.pads)){
-                if(b.directP1()&&pad.builtin)continue;
                 String type=hardware(pad.name,pad.side,pad.vendor,pad.product);
                 String label=pad.builtin?"Thor controls":"xbox_nano".equals(type)?"Xbox Nano":pad.name;
                 int current=b.seat(pad.id);

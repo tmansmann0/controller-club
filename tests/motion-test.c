@@ -23,7 +23,20 @@ int main(void){
  unsigned char packet[100];
  output=OUTPUT_EDEN;
  for(int i=0;i<MAX;i++)pads[i].fd=-1;
- steam_present=true;steam_slot=2;
+ steam_present=true;
+ // A Bluetooth-only lineup must work immediately, even before Thor access is ready.
+ int replies[2];assert(socketpair(AF_UNIX,SOCK_STREAM,0,replies)==0);
+ for(int i=0;i<4;i++)vfd[i]=-1;
+ char external_p1[]="1000000000:0:0";
+ apply(replies[0],external_p1,OUTPUT_EDEN);
+ assert(output==OUTPUT_EDEN&&routing()&&steam_slot==0);
+ dsu_send_slot(&address,0);
+ assert(recv(client,packet,sizeof(packet),0)==100);
+ assert(packet[20]==0&&packet[31]==1);
+ eden_idle();
+ assert(!routing()&&steam_slot==-1);
+ close(replies[0]);close(replies[1]);
+ steam_slot=2;
  motion_command("1000000000 123456789 0 1 -0.5 90 -45 180");
  dsu_send_slot(&address,2);
  assert(recv(client,packet,sizeof(packet),0)==100);
