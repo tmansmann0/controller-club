@@ -18,3 +18,5 @@ done
 java_home=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}
 "$java_home/bin/javac" -cp build/classes -d build/tests app/src/club/thor/pads/SteamReport.java tests/SteamReportTest.java
 "$java_home/bin/java" -cp build/tests club.thor.pads.SteamReportTest
+"$java_home/bin/javac" -d build/tests app/src/club/thor/pads/EdenProfiles.java tests/EdenProfilesTest.java
+"$java_home/bin/java" -cp build/tests club.thor.pads.EdenProfilesTest

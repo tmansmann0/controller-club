@@ -39,19 +39,26 @@ Swipe down twice and tap **Controller Club** to open the player lineup on the lo
 
 For the US release, use **Emulators → Dolphin → Mario Kart Wii → Use Club seats**. On first use, select the **Dolphin Emulator** folder in Android’s file picker. With routing ready, start routing and launch Mario Kart Wii. Dolphin loads P1 and P2 from the Club lineup, including when you swap the Xbox Nano and the Thor controls. **Restore previous** restores the prior game-specific mappings.
 
-### Eden
+### Eden — stable profiles
 
-Club exposes **Controller Club P1–P4** in Eden's Android device picker and separately provides optional DSU motion. Eden integration is manual: Club never changes controller bindings, profiles or emulator files. See the manual setup below. Stopping routing releases external controllers and passes the Thor through to the named P1 device.
+Eden can cache Android GUID/port registrations, retain duplicate native device entries, and renumber them after reconnects or reboot. For Eden, use the optional **Controller Club P1 Stable** through **P4 Stable** profiles rather than its device Auto-map picker. These profiles carry **buttons, sticks and gyro** over Club's existing loopback Cemuhook connection. They preserve the Xbox-position layout verified with Xbox Nano on P1 and the original Steam Controller on P2 in Mario Kart 8 Deluxe.
+
+The Android **Controller Club P1–P4** devices remain available for other emulators. Duplicate Club entries, generic UDP labels and input-overlay entries in Eden's picker belong to Eden; they are not extra players created by Club.
 
 ## Manual Eden setup
 
-Club provides **Controller Club P1–P4** as Android gamepads. It does not read or write Eden's configuration. Open **Emulators → Eden → Set up controls** in Club for the manual steps, or:
+1. Start Club routing and arrange the physical controllers in your preferred slots.
+2. Save any custom Eden player layout as its own profile before changing it. Leave players you do not want to change alone.
+3. In Eden's UDP/Cemuhook input settings, enable UDP controller input and include `127.0.0.1:37821`. Keep existing servers and their order.
+4. In Club, open **Emulators → Eden → Set up controls → Export stable profiles**. Enter Eden's UDP server list in exactly the same order, then choose where to save the ZIP. The default is the verified list `127.0.0.1:26760,127.0.0.1:37821`.
+5. Extract the ZIP. Copy its four `.ini` files into Eden's `config/input` folder, alongside your existing profiles. Do not replace `config.ini` or a custom profile; rename a new file first if its filename already exists.
+6. For each desired player in **Eden → Settings → Controls**, open the **Profile** dialog and load **Controller Club P1 Stable**, **P2 Stable**, **P3 Stable**, or **P4 Stable**. Enable that player if needed. Do not use the device Auto-map picker to replace the loaded profile.
+7. Save and launch the game. Other players, profiles and custom mappings remain yours to configure.
 
-1. Start Club routing and arrange your physical controllers in the desired slots.
-2. Open Eden's **Settings → Controls**. Save your custom layout as a profile before changing its device.
-3. Select **Controller Club P1**, **P2**, **P3** or **P4** for each player you want to use through Club. Keep other players and existing profiles as you prefer.
-4. Check the buttons and sticks, save, and launch your game.
+Club remembers its lineup and routing on/off choice. The profiles follow Club's player slots rather than Eden's changing Android-device order. **Keep Eden's UDP server order unchanged**; if you change it, export and load matching profiles again. With Club second after the default server, P1–P4 use pad IDs 4–7. With Club first, they use 0–3. The exporter calculates this offset and validates the server list.
 
-Club remembers its lineup and routing on/off choice. Eden stores its own mappings. If a mapping stops responding after reboot or reconnecting hardware, reselect the same named Club device in Eden. Eden's internal Android device-order number can change; fixed Club names alone cannot prevent that. No diagnostic permission is required by Club.
+Export is explicit and only writes the ZIP you choose. Club does not inspect or rewrite Eden's installed configuration, select a profile, change player assignments, or run background INI repairs. No diagnostic permission is required. The ZIP also contains these installation instructions and its exact server order.
 
-For optional motion, configure the local DSU server at `127.0.0.1:37821` and choose the matching player source in Eden's motion settings. Use the named Android devices for buttons and sticks. Existing motion settings can be left unchanged.
+## Local verification
+
+After building, run `ZIG=/path/to/zig scripts/test.sh`. The suite includes byte-for-byte comparisons with the verified P1/P2 profiles, P1–P4 pad offsets for several server orders, Xbox-position button values, archive contents, and invalid-list rejection. Tests do not connect to an Android device.

@@ -25,7 +25,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
     private static final int[] COLORS={0xFFFF4757,0xFFFF944D,0xFFFFC53D,0xFFB7DB51,0xFF3DDC84,0xFF70E1BE,
         0xFF00B4E6,0xFF6F9DFF,0xFFAA89FF,0xFFFF86B7,0xFFA9AFBA,0xFFF1F2F4};
     private int leftShoulderPad=-1, rightShoulderPad=-1;
-    private static final int PICK_DOLPHIN = 63;
+    private static final int PICK_DOLPHIN = 63, EXPORT_EDEN_PROFILES = 65;
     private static final java.util.concurrent.Executor DOLPHIN_IO =
             java.util.concurrent.Executors.newSingleThreadExecutor();
     @Override public void onCreate(Bundle state){
@@ -435,9 +435,46 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         TextView guide=ClubUi.text(this,EdenGuide.INSTRUCTIONS,14,ClubUi.SOFT,false);
         guide.setPadding(0,ClubUi.dp(this,10),0,ClubUi.dp(this,10));scroll.addView(guide);
         panel.addView(scroll,new LinearLayout.LayoutParams(-1,ClubUi.dp(this,265)));
+        panel.addView(ClubUi.button(this,"Export stable profiles…",null,0,ClubUi.FOCUS,()->{dialog.dismiss();exportEdenProfiles();}));
         panel.addView(ClubUi.button(this,"Open Eden on top",null,0,ClubUi.FOCUS,()->{dialog.dismiss();launch(EdenGuide.PACKAGE);}));
         panel.addView(ClubUi.button(this,"Done",null,0,ClubUi.TEXT,()->dialog.dismiss()));
         show(new AlertDialog.Builder(this).setView(panel));
+    }
+    private void exportEdenProfiles(){
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(ClubUi.dp(this,20),ClubUi.dp(this,16),ClubUi.dp(this,20),ClubUi.dp(this,12));panel.setBackgroundColor(ClubUi.BG);
+        panel.addView(ClubUi.text(this,"Export stable Eden profiles",22,ClubUi.TEXT,true));
+        panel.addView(ClubUi.text(this,"Enter Eden's UDP server list in the same order. The default below is the verified setup: default server first, Club second. This exports a ZIP only; it does not change Eden or your current mappings.",14,ClubUi.SOFT,false));
+        EditText servers=new EditText(this);servers.setTextColor(ClubUi.TEXT);servers.setHintTextColor(ClubUi.SOFT);
+        servers.setTextSize(14);servers.setSingleLine(false);servers.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        servers.setBackground(ClubUi.states(this,ClubUi.SURF,ClubUi.LINE,10,false));
+        servers.setPadding(ClubUi.dp(this,12),ClubUi.dp(this,10),ClubUi.dp(this,12),ClubUi.dp(this,10));
+        servers.setText(getSharedPreferences("routing",0).getString("edenExportServers",EdenProfiles.DEFAULT_SERVERS));
+        LinearLayout.LayoutParams field=new LinearLayout.LayoutParams(-1,-2);field.topMargin=ClubUi.dp(this,12);field.bottomMargin=ClubUi.dp(this,12);panel.addView(servers,field);
+        panel.addView(ClubUi.button(this,"Choose ZIP location",null,0,ClubUi.FOCUS,()->{
+            try{
+                EdenProfiles.Servers configured=EdenProfiles.servers(servers.getText().toString());
+                getSharedPreferences("routing",0).edit().putString("edenExportServers",configured.list).apply();
+                Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("application/zip").putExtra(Intent.EXTRA_TITLE,"Controller Club Eden Profiles.zip");
+                startActivityForResult(intent,EXPORT_EDEN_PROFILES);dialog.dismiss();
+            }catch(IllegalArgumentException e){servers.setError(e.getMessage());}
+            catch(ActivityNotFoundException e){msg("File picker unavailable","Choose a document provider to save the profile ZIP.");}
+        }));
+        panel.addView(ClubUi.button(this,"Cancel",null,0,ClubUi.TEXT,()->dialog.dismiss()));
+        show(new AlertDialog.Builder(this).setView(panel));
+    }
+    private void saveEdenProfiles(Uri target){
+        EdenProfiles.Servers servers=EdenProfiles.servers(getSharedPreferences("routing",0).getString("edenExportServers",EdenProfiles.DEFAULT_SERVERS));
+        DOLPHIN_IO.execute(()->{
+            try(java.io.OutputStream output=getContentResolver().openOutputStream(target,"wt")){
+                if(output==null)throw new java.io.IOException("The selected file could not be opened.");
+                EdenProfiles.writeZip(output,servers);
+            }catch(Exception e){
+                runOnUiThread(()->{if(!isFinishing()&&!isDestroyed())msg("Could not export profiles",e.getLocalizedMessage());});return;
+            }
+            runOnUiThread(()->{if(!isFinishing()&&!isDestroyed())msg("Stable profiles exported","Extract the four INI files into Eden's config/input folder without replacing existing profiles. For each desired player, use Eden's Profile dialog to load the matching Stable profile. Keep the UDP server order unchanged.");});
+        });
     }
     private void marioKartOptions(){
         show(new AlertDialog.Builder(this,android.R.style.Theme_Material_Dialog_Alert)
@@ -464,6 +501,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
     @Override protected void onActivityResult(int code,int result,Intent data){
         super.onActivityResult(code,result,data);
         if(result!=RESULT_OK||data==null||data.getData()==null)return;
+        if(code==EXPORT_EDEN_PROFILES){saveEdenProfiles(data.getData());return;}
         Uri tree=data.getData();
         if(code!=PICK_DOLPHIN)return;
         if(!MarioKartSetup.isDolphinRoot(tree)){android.util.Log.w("ClubSetup","Unexpected folder provider "+tree.getAuthority()+" id "+DocumentsContract.getTreeDocumentId(tree));msg("Choose the Dolphin folder","In the file picker, choose Dolphin Emulator from the sidebar, then tap Use this folder.");return;}
