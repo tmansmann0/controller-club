@@ -66,12 +66,15 @@ static void set_axis(int fd,int code,int lo,int hi){
  struct uinput_abs_setup a={.code=code,.absinfo={.minimum=lo,.maximum=hi}};
  if(ioctl(fd,UI_SET_ABSBIT,code)<0 || ioctl(fd,UI_ABS_SETUP,&a)<0) done=1;
 }
+static bool routing(void);
+#include "rumble.h"
 static int make_pad(int slot){
- int fd=open("/dev/uinput",O_WRONLY|O_NONBLOCK|O_CLOEXEC);
+ int fd=open("/dev/uinput",O_RDWR|O_NONBLOCK|O_CLOEXEC);
  if(fd<0)return -1;
+ if(ioctl(fd,UI_SET_EVBIT,EV_FF)<0 || ioctl(fd,UI_SET_FFBIT,FF_RUMBLE)<0)goto bad;
  if(ioctl(fd,UI_SET_EVBIT,EV_KEY)<0 || ioctl(fd,UI_SET_EVBIT,EV_ABS)<0) goto bad;
  for(int i=0;i<KEYS;i++) if(i<12 || i==14) if(ioctl(fd,UI_SET_KEYBIT,key[i])<0)goto bad;
- struct uinput_setup u={.id={.bustype=BUS_USB,.vendor=0x1209,.product=0x5440+slot,.version=1}};
+ struct uinput_setup u={.id={.bustype=BUS_USB,.vendor=0x1209,.product=0x5440+slot,.version=1},.ff_effects_max=CLUB_EFFECTS};
  snprintf(u.name,sizeof(u.name),"Controller Club P%d",slot+1);
  const int *axis=club_axis;
  for(int i=0;i<AXES;i++)set_axis(fd,axis[i],i<4?-32767:(i<6?0:-1),i<6?32767:1);
@@ -204,6 +207,7 @@ static void push_system_keys(Pad *p){
  previous_system_keys=current;
 }
 static void off(void){
+ rumble_clear();
  routing_active=false;
  dsu_stop();
  steam_slot=-1;
@@ -218,6 +222,7 @@ static void off(void){
  memset(previous,0,sizeof(previous));
 }
 static void eden_idle(void){
+ rumble_clear();
  routing_active=false;
  steam_slot=-1;
  memset(&steam_state,0,sizeof(steam_state));
@@ -370,6 +375,7 @@ static void apply(int fd,char *cmd,enum Output next_output){
  if(!dsu_start()&&eden){dprintf(fd,"ERR Eden controller port is unavailable\n");return;}
 
  if(!ensure_players()){off();dprintf(fd,"ERR Virtual gamepads unavailable\n");return;}
+ rumble_clear();
  output=next_output;
  routing_active=true;
  for(int i=0;i<MAX;i++)if(pads[i].fd>=0){
@@ -466,9 +472,11 @@ int main(int argc,char **argv){
    long long now=now_ms();
    if(now-scanned>=500){scan();scanned=now;}
    if(fd>=0 && now-last>6500){close(fd);fd=-1;eden_idle();steam_present=false;}
-   struct pollfd f[MAX+3];f[MAX+2]=(struct pollfd){dsu_fd,POLLIN,0};f[0]=(struct pollfd){server,POLLIN,0};f[1]=(struct pollfd){fd,POLLIN,0};
+   struct pollfd f[MAX+7];f[MAX+2]=(struct pollfd){dsu_fd,POLLIN,0};f[0]=(struct pollfd){server,POLLIN,0};f[1]=(struct pollfd){fd,POLLIN,0};
    for(int i=0;i<MAX;i++)f[i+2]=(struct pollfd){pads[i].fd,POLLIN,0};
-   if(poll(f,MAX+3,160)<0)continue;
+   for(int i=0;i<4;i++)f[MAX+3+i]=(struct pollfd){vfd[i],POLLIN,0};
+   if(poll(f,MAX+7,40)<0)continue;
+   for(int i=0;i<4;i++)if(vfd[i]>=0&&(f[MAX+3+i].revents&POLLIN))rumble_events(i);
    if(dsu_fd>=0&&f[MAX+2].revents&POLLIN)dsu_receive();
    for(int i=0;i<MAX;i++)if(pads[i].fd>=0&&f[i+2].revents)events(&pads[i]);
    if(fd>=0&&f[1].revents){
@@ -478,6 +486,7 @@ int main(int argc,char **argv){
          in[used]=0;
          if(!auth){if(used!=69||memcmp(in,"AUTH ",5)||memcmp(in+5,token,64))closeit=true;else{auth=true;status(fd);}}
          else if(!strcmp(in,"STATUS"))status(fd);
+         else if(!strcmp(in,"FEEDBACK"))rumble_feedback(fd);
          else if(!strcmp(in,"PLAYERS")){
            if(ensure_players())status(fd);
            else dprintf(fd,"ERR Virtual gamepads unavailable\n");

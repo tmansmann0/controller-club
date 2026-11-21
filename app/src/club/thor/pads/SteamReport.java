@@ -2,6 +2,26 @@ package club.thor.pads;
 
 /** Original Steam Controller BLE reports. Chunk flags and button bits match Valve's SDL driver. */
 final class SteamReport {
+    enum Binding {
+        NONE("Unassigned",-1), A("A · south",0), B("B · east",1), X("X · west",3), Y("Y · north",2),
+        LB("Left bumper",4), RB("Right bumper",5), LT("Left trigger",6), RT("Right trigger",7),
+        BACK("Select / Back",8), START("Start",9), LS("Left stick click",10), RS("Right stick click",11),
+        GUIDE("Guide",14), UP("D-pad up",-1), DOWN("D-pad down",-1), LEFT("D-pad left",-1), RIGHT("D-pad right",-1);
+        final String label; final int key;
+        Binding(String label,int key){this.label=label;this.key=key;}
+        static Binding saved(String name){
+            try{return valueOf(name);}catch(IllegalArgumentException|NullPointerException ignored){return NONE;}
+        }
+    }
+    private Binding rearLeft=Binding.NONE,rearRight=Binding.NONE;
+    private boolean haveState;
+    String bindRear(Binding left,Binding right){
+        rearLeft=left==null?Binding.NONE:left;rearRight=right==null?Binding.NONE:right;
+        return haveState?controls():null;
+    }
+    private boolean rear(Binding binding){
+        return (pressed(0x8000)&&rearLeft==binding)||(pressed(0x10000)&&rearRight==binding);
+    }
     private final byte[] packet = new byte[144];
     private int segment;
     private boolean haveAcceleration, haveGyroscope, motionUpdated;
@@ -57,6 +77,11 @@ final class SteamReport {
             haveGyroscope=true;
             motionUpdated=true;
         }
+        haveState=true;
+        return controls();
+    }
+
+    private String controls(){
         int[] masks = {0x80,0x20,0x10,0x40,8,4,2,1,0x1000,0x4000,0x400000,0x40000,0,0,0x2000};
         int keys = 0;
         for (int i = 0; i < masks.length; i++) if ((buttons & masks[i]) != 0) keys |= 1 << i;
@@ -66,10 +91,23 @@ final class SteamReport {
             if (Math.abs(leftX) > Math.abs(leftY)) dx = direction(leftX);
             else dy = -direction(leftY);
         }
+        // Add paddle outputs to physical controls; releasing a paddle must never
+        // release the same button while its ordinary face button is still held.
+        for(Binding binding:Binding.values())if(binding.key>=0&&rear(binding))keys|=1<<binding.key;
+        if(rear(Binding.LEFT)||rear(Binding.RIGHT)){
+            int left=(dx<0||rear(Binding.LEFT))?1:0;
+            int right=(dx>0||rear(Binding.RIGHT))?1:0;
+            dx=right-left;
+        }
+        if(rear(Binding.UP)||rear(Binding.DOWN)){
+            int up=(dy<0||rear(Binding.UP))?1:0;
+            int down=(dy>0||rear(Binding.DOWN))?1:0;
+            dy=down-up;
+        }
         boolean touchingRight = pressed(0x100000);
         return "STEAM INPUT " + keys + " " + x + " " + -y + " "
                 + (touchingRight ? rightX : 0) + " " + (touchingRight ? -rightY : 0) + " "
-                + (pressed(2) ? 32767 : triggerL) + " " + (pressed(1) ? 32767 : triggerR) + " " + dx + " " + dy;
+                + (pressed(2)||rear(Binding.LT) ? 32767 : triggerL) + " " + (pressed(1)||rear(Binding.RT) ? 32767 : triggerR) + " " + dx + " " + dy;
     }
 
     String motion(long timestampUs) {

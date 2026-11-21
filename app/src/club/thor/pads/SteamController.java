@@ -57,6 +57,7 @@ final class SteamController {
         this.worker=worker;
         manager=bridge.getSystemService(BluetoothManager.class);
         adapter=manager==null?null:manager.getAdapter();
+        reloadRearBindings();
         preferredAddress=bridge.getSharedPreferences("steam",0).getString("lastConnectedAddress","");
     }
 
@@ -207,6 +208,13 @@ final class SteamController {
 
     void announce() { if (subscribed) bridge.sendSteam("STEAM ADD " + identity); }
 
+    void reloadRearBindings(){
+        android.content.SharedPreferences settings=bridge.getSharedPreferences("steam",0);
+        String input=decoder.bindRear(SteamReport.Binding.saved(settings.getString("rear.left","NONE")),
+            SteamReport.Binding.saved(settings.getString("rear.right","NONE")));
+        if(input!=null&&mode&&wanted){previousInput=input;bridge.sendSteam(input);}
+    }
+
     void setRouting(boolean on) {
         wanted = on;
         configure();
@@ -218,6 +226,7 @@ final class SteamController {
         previousInput = null;
         motionReceived=false;
         decoder = new SteamReport();
+        reloadRearBindings();
         if(mode)commands.add(ENTER_VALVE_MODE);
         commands.add(mode ? DISABLE_DIGITAL : RESTORE_DIGITAL);
         commands.add(mode ? DISABLE_TRACKPADS : RESTORE_TRACKPADS);

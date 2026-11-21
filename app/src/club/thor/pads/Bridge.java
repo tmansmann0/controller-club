@@ -30,6 +30,8 @@ public final class Bridge extends Service {
     HandlerThread thread;
     private SteamController steam;
     private ControllerMotion motion;
+    ControllerFeedback feedback;
+    private boolean feedbackActive;
     volatile Socket socket;
     volatile java.lang.Process localRouter;
     volatile boolean usingLocal;
@@ -68,6 +70,8 @@ public final class Bridge extends Service {
         thread=new HandlerThread("Controller Club bridge");thread.start();worker=new Handler(thread.getLooper());
         steam=new SteamController(this,worker);
         motion=new ControllerMotion(this,worker);
+        feedback=new ControllerFeedback(this);
+        worker.post(feedbackPoll);
         worker.post(poll);changed();
     }
     @Override public int onStartCommand(Intent i,int flags,int id){
@@ -98,6 +102,30 @@ public final class Bridge extends Service {
         steam.tick();
         if(!closed)worker.postDelayed(this,1200);
     }};
+    final Runnable feedbackPoll=new Runnable(){public void run(){
+        if(closed)return;
+        if(socket!=null&&feedbackActive){
+            try{
+                writer.write("FEEDBACK\n");writer.flush();
+                String line=reader.readLine();
+                if(line==null)throw new IOException();
+                String[] fields=line.split(" ");
+                if(fields.length!=5||!fields[0].equals("RUMBLE"))throw new IOException();
+                int[] levels=new int[4];
+                for(int i=0;i<4;i++){
+                    levels[i]=Integer.parseInt(fields[i+1]);
+                    if(levels[i]<0||levels[i]>65535)throw new IOException();
+                }
+                feedback.play(levels);
+            }catch(IOException|RuntimeException e){lost();}
+        }
+        if(!closed)worker.postDelayed(this,feedbackActive?50:250);
+    }};
+    void testRumble(int slot){
+        int[] ids=seats[slot];if(ids==null)return;
+        ArrayList<Pad> roster=new ArrayList<>(pads);
+        worker.post(()->{for(int id:ids)feedback.test(id,roster);});
+    }
     private void connectRouter() throws IOException {
         // Use the bundled router: an older USB helper may implement a different
         // controller identity/layout and must not silently become the active backend.
@@ -138,6 +166,11 @@ public final class Bridge extends Service {
         Socket old=socket;socket=null;
         if(old!=null)try{old.close();}catch(IOException ignored){}
     }
+    void setSteamRear(boolean left,SteamReport.Binding binding){
+        getSharedPreferences("steam",MODE_PRIVATE).edit()
+            .putString(left?"rear.left":"rear.right",binding.name()).apply();
+        worker.post(()->steam.reloadRearBindings());
+    }
     void watchForSteamPairing(boolean open){
         worker.post(()->steam.setNearby(open));
     }
@@ -153,6 +186,8 @@ public final class Bridge extends Service {
         catch(IOException e){lost();}
     }
     void lost(){
+        feedbackActive=false;
+        if(feedback!=null)feedback.stop();
         closeConnection();
         if(steam!=null)steam.setRouting(false);
         if(motion!=null)motion.close();
@@ -170,6 +205,7 @@ public final class Bridge extends Service {
             if(first.startsWith("ERR ")){MAIN.post(()->{if(!closed){error=first.substring(4);busy=false;changed();}});return;}
             if(!first.matches("STATE [0-9]+ [01]"))throw new IOException();
             Set<Integer> motionSources=new HashSet<>();
+            Map<Integer,Integer> feedbackSlots=new HashMap<>();
             ArrayList<Pad> found=new ArrayList<>();boolean on=first.endsWith(" 1");
             boolean steamAssigned=false;
             for(int i=0;i<=25;i++){
@@ -177,6 +213,8 @@ public final class Bridge extends Service {
                 if("END".equals(line)){
                     steam.setRouting(on&&steamAssigned);
                     motion.sync(found,motionSources);
+                    feedback.sync(found,feedbackSlots,on);
+                    feedbackActive=on;
                     boolean local=usingLocal&&found.stream().noneMatch(pad->pad.builtin);
                     MAIN.post(()->accept(found,on,user,local));return;
                 }
@@ -187,6 +225,7 @@ public final class Bridge extends Service {
                 if(f.length!=(hasIdentity?10:9))throw new IOException();
                 if(!f[4].equals("-1")&&(on||output==Output.EDEN&&f[3].equals("1")))
                     motionSources.add(Integer.parseInt(f[1]));
+                feedbackSlots.put(Integer.parseInt(f[1]),Integer.parseInt(f[4]));
                 if(f[1].equals(Integer.toString(STEAM_PAD_ID))&&!f[4].equals("-1"))steamAssigned=true;
                 found.add(new Pad(Integer.parseInt(f[1]),Integer.parseInt(f[2]),f[3].equals("1"),
                     Integer.parseInt(f[6]),Integer.parseInt(f[7]),f[hasIdentity?9:8],
@@ -333,6 +372,6 @@ public final class Bridge extends Service {
         if(current==this)current=null;
         closeConnection();
         java.lang.Process process=localRouter;if(process!=null)process.destroy();
-        worker.removeCallbacksAndMessages(null);worker.post(()->{motion.close();steam.close();});changed();super.onDestroy();
+        worker.removeCallbacksAndMessages(null);worker.post(()->{feedback.stop();motion.close();steam.close();});changed();super.onDestroy();
     }
 }

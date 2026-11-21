@@ -11,7 +11,7 @@ if [[ "$(uname -s)" == Darwin ]]; then
 else
     compiler=${CC:-cc}
 fi
-for test in router motion virtual-players; do
+for test in router motion virtual-players rumble; do
     "$compiler" "${flags[@]}" "tests/$test-test.c" -o "build/tests/$test"
     "build/tests/$test"
 done
@@ -20,3 +20,6 @@ java_home=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents
 "$java_home/bin/java" -cp build/tests club.thor.pads.SteamReportTest
 "$java_home/bin/javac" -d build/tests app/src/club/thor/pads/EdenProfiles.java tests/EdenProfilesTest.java
 "$java_home/bin/java" -cp build/tests club.thor.pads.EdenProfilesTest
+
+"$java_home/bin/javac" -d build/tests app/src/club/thor/pads/BatteryReading.java tests/BatteryReadingTest.java
+"$java_home/bin/java" -cp build/tests club.thor.pads.BatteryReadingTest

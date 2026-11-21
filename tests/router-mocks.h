@@ -10,6 +10,8 @@ static int test_open(const char *,int,...);
 static int test_ioctl(int,unsigned long,...);
 static ssize_t test_write(int,const void *,size_t);
 static int test_close(int);
+static struct uinput_ff_upload test_upload;
+static struct uinput_ff_erase test_erase;
 #define open test_open
 #define ioctl test_ioctl
 #define write test_write
@@ -40,7 +42,15 @@ static int test_ioctl(int fd,unsigned long request,...){
     assert(fd>=TEST_FD&&fd<TEST_FD+test_opened);
     struct TestDevice *device=&test_devices[fd-TEST_FD];
     va_list args;va_start(args,request);
-    if(request==UI_DEV_SETUP)device->setup=*va_arg(args,struct uinput_setup *);
+    if(request==UI_BEGIN_FF_UPLOAD){
+        struct uinput_ff_upload *upload=va_arg(args,struct uinput_ff_upload *);*upload=test_upload;
+    }
+    else if(request==UI_END_FF_UPLOAD)test_upload=*va_arg(args,struct uinput_ff_upload *);
+    else if(request==UI_BEGIN_FF_ERASE){
+        struct uinput_ff_erase *erase=va_arg(args,struct uinput_ff_erase *);*erase=test_erase;
+    }
+    else if(request==UI_END_FF_ERASE)test_erase=*va_arg(args,struct uinput_ff_erase *);
+    else if(request==UI_DEV_SETUP)device->setup=*va_arg(args,struct uinput_setup *);
     else if(request==UI_ABS_SETUP){
         struct uinput_abs_setup *axis=va_arg(args,struct uinput_abs_setup *);
         device->ranges[axis->code]=axis->absinfo;device->has_axis[axis->code]=true;

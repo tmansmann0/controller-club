@@ -106,6 +106,13 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
                 if(p!=null){
                     title=a.length==2?"Joy-Con pair":p.builtin?"Thor controls":p.name;
                     detail=a.length==2?"Left + right":p.side!=0?"Sideways":p.builtin?"Built-in":"Connected";
+                    if(a.length==1)detail=b.feedback.battery(p.id);
+                    else {
+                        Bridge.Pad other=b.find(a[1]);
+                        String first=(p.side==1?"L ":"R ")+b.feedback.battery(p.id);
+                        String second=other==null?"":(other.side==1?"L ":"R ")+b.feedback.battery(other.id);
+                        detail=first+"\n"+second;
+                    }
                     type=a.length==2?"joy_pair":hardware(p.name,p.side,p.vendor,p.product);
                     if("xbox_nano".equals(type))title="Xbox Nano";
                     colorKey=deviceColorKey(p,androidPads);
@@ -215,7 +222,11 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
                 row.setPadding(ClubUi.dp(this,8),0,ClubUi.dp(this,12),0);
                 row.setBackground(ClubUi.states(this,ClubUi.SURF,current==slot?ClubUi.FOCUS:ClubUi.LINE,10,false));
                 row.addView(new ClubUi.Art(this,type,lineup[slot].slotColor,savedColor(deviceColorKey(pad,physical()),0),0),new android.widget.LinearLayout.LayoutParams(ClubUi.dp(this,60),ClubUi.dp(this,53)));
-                row.addView(ClubUi.text(this,label,15,ClubUi.TEXT,true),new android.widget.LinearLayout.LayoutParams(0,-2,1));
+                android.widget.LinearLayout caption=new android.widget.LinearLayout(this);
+                caption.setOrientation(android.widget.LinearLayout.VERTICAL);
+                caption.addView(ClubUi.text(this,label,15,ClubUi.TEXT,true));
+                caption.addView(ClubUi.text(this,b.feedback.battery(pad.id),11,ClubUi.SOFT,false));
+                row.addView(caption,new android.widget.LinearLayout.LayoutParams(0,-2,1));
                 row.addView(ClubUi.text(this,current<0?"Unassigned":"P"+(current+1),13,ClubUi.SOFT,false));
                 ClubUi.tap(row,label+", "+(current<0?"unassigned":"player "+(current+1)),()->{
                     dialog.dismiss();
@@ -226,6 +237,14 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
                 rows.addView(row,item);
             }
         }
+        if(canAssign&&b.find(Bridge.STEAM_PAD_ID)!=null)
+            panel.addView(ClubUi.button(this,"Steam rear paddles",null,0,ClubUi.FOCUS,()->showSteamRear(slot)));
+        if(canAssign&&b.seats[slot]!=null){
+            boolean supported=false;
+            for(int id:b.seats[slot])if(b.feedback.canRumble(id))supported=true;
+            if(supported)panel.addView(ClubUi.button(this,"Test rumble",null,0,ClubUi.FOCUS,()->b.testRumble(slot)));
+            panel.addView(ClubUi.text(this,"Game rumble uses Android controllers. Eden’s stable DSU profiles don’t send rumble.",12,ClubUi.SOFT,false));
+        }
         android.widget.LinearLayout footer=new android.widget.LinearLayout(this);
         footer.setGravity(Gravity.END);
         footer.addView(ClubUi.button(this,"Colors",null,0,ClubUi.TEXT,()->showColors(slot)));
@@ -234,6 +253,54 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         panel.addView(footer);
         show(new AlertDialog.Builder(this).setView(panel));
         styleClubDialog();
+    }
+    private void showSteamRear(int slot){
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(ClubUi.dp(this,18),ClubUi.dp(this,16),ClubUi.dp(this,18),ClubUi.dp(this,12));
+        panel.setBackgroundColor(ClubUi.BG);
+        panel.addView(ClubUi.text(this,"Steam rear paddles",22,ClubUi.TEXT,true));
+        panel.addView(ClubUi.text(this,"Original Steam Controller · saved for every player slot",12,ClubUi.SOFT,false));
+        for(boolean left:new boolean[]{true,false}){
+            SteamReport.Binding binding=SteamReport.Binding.saved(getSharedPreferences("steam",0)
+                .getString(left?"rear.left":"rear.right","NONE"));
+            View button=ClubUi.button(this,(left?"Left paddle":"Right paddle")+"  ·  "+binding.label,
+                null,0,ClubUi.TEXT,()->chooseSteamRear(slot,left));
+            LinearLayout.LayoutParams row=new LinearLayout.LayoutParams(-1,ClubUi.dp(this,54));row.topMargin=ClubUi.dp(this,10);
+            panel.addView(button,row);
+        }
+        panel.addView(ClubUi.text(this,"Hold a paddle to hold its control. Uses Xbox button positions. Applies while Club routing is on.",12,ClubUi.SOFT,false));
+        panel.addView(ClubUi.button(this,"Done",null,0,ClubUi.FOCUS,()->choose(slot)));
+        show(new AlertDialog.Builder(this).setView(panel));styleClubDialog();
+    }
+    private void chooseSteamRear(int slot,boolean left){
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(ClubUi.dp(this,16),ClubUi.dp(this,14),ClubUi.dp(this,16),ClubUi.dp(this,10));
+        panel.setBackgroundColor(ClubUi.BG);
+        panel.addView(ClubUi.text(this,left?"Left rear paddle":"Right rear paddle",22,ClubUi.TEXT,true));
+        SteamReport.Binding selected=SteamReport.Binding.saved(getSharedPreferences("steam",0)
+            .getString(left?"rear.left":"rear.right","NONE"));
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout choices=new LinearLayout(this);choices.setOrientation(LinearLayout.VERTICAL);scroll.addView(choices);
+        SteamReport.Binding[] bindings=SteamReport.Binding.values();
+        for(int i=0;i<bindings.length;i+=2){
+            LinearLayout row=new LinearLayout(this);
+            for(int j=i;j<Math.min(i+2,bindings.length);j++){
+                SteamReport.Binding binding=bindings[j];
+                View choice=ClubUi.button(this,(binding==selected?"✓ ":"")+binding.label,null,0,
+                    binding==selected?ClubUi.FOCUS:ClubUi.TEXT,()->{
+                        Bridge bridge=Bridge.current;
+                        if(bridge!=null)bridge.setSteamRear(left,binding);
+                        else getSharedPreferences("steam",0).edit().putString(left?"rear.left":"rear.right",binding.name()).apply();
+                        showSteamRear(slot);
+                    });
+                LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,ClubUi.dp(this,48),1);
+                cell.setMargins(ClubUi.dp(this,3),ClubUi.dp(this,3),ClubUi.dp(this,3),ClubUi.dp(this,3));row.addView(choice,cell);
+            }
+            choices.addView(row);
+        }
+        panel.addView(scroll,new LinearLayout.LayoutParams(-1,ClubUi.dp(this,270)));
+        panel.addView(ClubUi.button(this,"Back",null,0,ClubUi.FOCUS,()->showSteamRear(slot)));
+        show(new AlertDialog.Builder(this).setView(panel));styleClubDialog();
     }
     private void showColors(int slot){
         LinearLayout content=new LinearLayout(this);
