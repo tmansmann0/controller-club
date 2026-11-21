@@ -1,5 +1,5 @@
 #define main router_entry
-#include "../native/router.c"
+#include "router-mocks.h"
 #undef main
 #include <assert.h>
 

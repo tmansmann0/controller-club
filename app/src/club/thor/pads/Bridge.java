@@ -23,6 +23,7 @@ public final class Bridge extends Service {
     final int[][] seats=new int[4][];
     final Set<Integer> omitted=new HashSet<>();
     boolean online,active,busy;
+    boolean routingWanted;
     volatile boolean closed;
     String error="";
     Handler worker;
@@ -36,7 +37,7 @@ public final class Bridge extends Service {
     private long lastAccessAttempt;
     private static final String ASSIGNMENT="assignment.";
     enum Output {
-        XBOX("Xbox controllers"), PROFILES("Dolphin / Cemu profiles"), EDEN("Eden controllers");
+        XBOX("Controller Club P1–P4"), PROFILES("Club players · Dolphin / Cemu"), EDEN("Club players · Eden + motion");
         final String label;
         Output(String label){this.label=label;}
     }
@@ -49,6 +50,7 @@ public final class Bridge extends Service {
     @Override public void onCreate(){
         super.onCreate();current=this;
         SharedPreferences settings=getSharedPreferences("routing",MODE_PRIVATE);
+        routingWanted=settings.getBoolean("routingWanted",false);
         String mode=settings.getString("output",settings.getBoolean("xboxOutput",true)?"XBOX":"PROFILES");
         try{output=Output.valueOf(mode);}catch(IllegalArgumentException ignored){}
         NotificationManager nm=getSystemService(NotificationManager.class);
@@ -61,7 +63,7 @@ public final class Bridge extends Service {
     }
     @Override public int onStartCommand(Intent i,int flags,int id){
         if(i!=null && "OFF".equals(i.getAction()))stopRouting();
-        return START_NOT_STICKY;
+        return START_STICKY;
     }
     Notification notification(boolean on){
         int flags=PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT;
@@ -88,17 +90,8 @@ public final class Bridge extends Service {
         if(!closed)worker.postDelayed(this,1200);
     }};
     private void connectRouter() throws IOException {
-        File shellToken=new File(getFilesDir(),"session.token");
-        if(shellToken.isFile()){
-            String token=new String(Files.readAllBytes(shellToken.toPath()),StandardCharsets.US_ASCII).trim();
-            if(token.matches("[a-f0-9]{64}")){
-                try{
-                    usingLocal=false;
-                    connect(37819,token);
-                    return;
-                }catch(IOException ignored){closeConnection();}
-            }
-        }
+        // Use the bundled router: an older USB helper may implement a different
+        // controller identity/layout and must not silently become the active backend.
         if(!Build.MODEL.toLowerCase(Locale.ROOT).contains("thor"))throw new IOException("Thor required");
         startLocalRouter();
         if(closed){localRouter.destroy();throw new IOException("Router closed");}
@@ -128,6 +121,7 @@ public final class Bridge extends Service {
         reader=new BufferedReader(new InputStreamReader(s.getInputStream(),StandardCharsets.UTF_8));
         writer=new BufferedWriter(new OutputStreamWriter(s.getOutputStream(),StandardCharsets.US_ASCII));
         request("AUTH "+token,false);
+        request("PLAYERS",false);
         if(output==Output.EDEN)request("EDENIDLE",false);
         steam.announce();
     }
@@ -207,7 +201,7 @@ public final class Bridge extends Service {
         }
         fillSeats();
         if(wasActive!=on)getSystemService(NotificationManager.class).notify(1,notification(on));
-        if(on&&!user){ if(canRoute())sendRoute();else stopRouting(); }
+        if(!busy&&((on&&!user)||(!on&&routingWanted&&error.isEmpty())))sendRoute();
         changed();
     }
     private void fillSeats(){
@@ -252,7 +246,7 @@ public final class Bridge extends Service {
     Pad find(int id){for(Pad p:pads)if(p.id==id)return p;return null;}
     int seat(int id){for(int s=0;s<4;s++)if(seats[s]!=null)for(int x:seats[s])if(x==id)return s;return -1;}
     int open(){for(int i=0;i<4;i++)if(seats[i]==null)return i;return -1;}
-    boolean canRoute(){return any();}
+    boolean canRoute(){return online;}
     boolean any(){for(int[] a:seats)if(a!=null)return true;return false;}
     int pairSeat(){for(int i=0;i<4;i++)if(seats[i]!=null&&seats[i].length==2)return i;return -1;}
     void assign(int s,Pad p){
@@ -312,12 +306,16 @@ public final class Bridge extends Service {
     }
     void sendRoute(){
         if(!online||!canRoute())return;
-        StringBuilder cmd=new StringBuilder(output==Output.EDEN?"EDEN":!any()?"DIRECT":output==Output.PROFILES?"ROUTE":"XBOX");
+        routingWanted=true;
+        getSharedPreferences("routing",MODE_PRIVATE).edit().putBoolean("routingWanted",true).apply();
+        StringBuilder cmd=new StringBuilder(output==Output.EDEN?"EDEN":output==Output.PROFILES?"ROUTE":"XBOX");
         for(int s=0;s<4;s++)if(seats[s]!=null)for(int id:seats[s])
             cmd.append(' ').append(id).append(':').append(s).append(':').append(seats[s].length==2?1:0);
         busy=true;changed();worker.post(()->request(cmd.toString(),true));
     }
     void stopRouting(){
+        routingWanted=false;
+        getSharedPreferences("routing",MODE_PRIVATE).edit().putBoolean("routingWanted",false).apply();
         if(!online)return;
         busy=true;changed();worker.post(()->request("OFF",true));
     }

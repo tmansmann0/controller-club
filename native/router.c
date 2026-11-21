@@ -16,6 +16,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/prctl.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -26,9 +27,6 @@
 #define BITS(n) (((n)+8)/8)
 static int bit(const unsigned char *s,int n){ return (s[n/8]>>(n%8))&1; }
 static const int club_axis[AXES]={ABS_X,ABS_Y,ABS_Z,ABS_RZ,ABS_BRAKE,ABS_GAS,ABS_HAT0X,ABS_HAT0Y};
-static const int xbox_axis[AXES]={ABS_X,ABS_Y,ABS_RX,ABS_RY,ABS_Z,ABS_RZ,ABS_HAT0X,ABS_HAT0Y};
-/* These Xbox models have the same Android layout and give each seat a stable descriptor. */
-static const unsigned short xbox_product[4]={0x028e,0x028f,0x02a1,0x02d1};
 static const int system_key[]={KEY_HOME,KEY_VOLUMEDOWN,KEY_VOLUMEUP,KEY_BACK,KEY_APPSELECT};
 static const int key[KEYS]={BTN_SOUTH,BTN_EAST,BTN_NORTH,BTN_WEST,BTN_TL,BTN_TR,BTN_TL2,BTN_TR2,BTN_SELECT,BTN_START,BTN_THUMBL,BTN_THUMBR,BTN_DPAD_UP,BTN_DPAD_DOWN,BTN_MODE};
 typedef struct {int a[AXES]; unsigned k;} State;
@@ -48,7 +46,7 @@ static State previous[4], steam_state;
 static Motion steam_motion;
 enum Output { OUTPUT_PROFILES, OUTPUT_XBOX, OUTPUT_EDEN };
 static enum Output output;
-static bool direct_active;
+static bool routing_active;
 static int system_fd=-1;
 static unsigned previous_system_keys;
 #define STEAM_PAD_ID 1000000000
@@ -68,15 +66,14 @@ static void set_axis(int fd,int code,int lo,int hi){
  struct uinput_abs_setup a={.code=code,.absinfo={.minimum=lo,.maximum=hi}};
  if(ioctl(fd,UI_SET_ABSBIT,code)<0 || ioctl(fd,UI_ABS_SETUP,&a)<0) done=1;
 }
-static int make_pad(int slot,bool xbox){
+static int make_pad(int slot){
  int fd=open("/dev/uinput",O_WRONLY|O_NONBLOCK|O_CLOEXEC);
  if(fd<0)return -1;
  if(ioctl(fd,UI_SET_EVBIT,EV_KEY)<0 || ioctl(fd,UI_SET_EVBIT,EV_ABS)<0) goto bad;
  for(int i=0;i<KEYS;i++) if(i<12 || i==14) if(ioctl(fd,UI_SET_KEYBIT,key[i])<0)goto bad;
  struct uinput_setup u={.id={.bustype=BUS_USB,.vendor=0x1209,.product=0x5440+slot,.version=1}};
- if(xbox){u.id.vendor=0x045e;u.id.product=xbox_product[slot];}
- snprintf(u.name,sizeof(u.name),xbox?"Xbox Controller P%d":"Controller Club P%d",slot+1);
- const int *axis=xbox?xbox_axis:club_axis;
+ snprintf(u.name,sizeof(u.name),"Controller Club P%d",slot+1);
+ const int *axis=club_axis;
  for(int i=0;i<AXES;i++)set_axis(fd,axis[i],i<4?-32767:(i<6?0:-1),i<6?32767:1);
  if(done || ioctl(fd,UI_DEV_SETUP,&u)<0 || ioctl(fd,UI_DEV_CREATE)<0)goto bad;
  return fd;
@@ -98,11 +95,15 @@ static void destroy_virtual(int *fd){
  if(*fd<0)return;
  ioctl(*fd,UI_DEV_DESTROY);close(*fd);*fd=-1;
 }
-static bool routing(void){
- if(direct_active)return true;
- for(int n=0;n<4;n++)if(vfd[n]>=0)return true;
- return false;
+/* Player identities outlive a route, a disconnect, and an emulator mode switch. */
+static bool ensure_players(void){
+ for(int slot=0;slot<4;slot++)if(vfd[slot]<0){
+   if((vfd[slot]=make_pad(slot))<0)return false;
+   memset(&previous[slot],0,sizeof(previous[slot]));
+ }
+ return true;
 }
+static bool routing(void){return routing_active;}
 static void snapshot(Pad *p){
  memset(p->keys,0,sizeof(p->keys));
  ioctl(p->fd,EVIOCGKEY(sizeof(p->keys)),p->keys);
@@ -175,8 +176,10 @@ static void push_slot(int n){
  }
  if(steam_slot==n&&steam_present){s=steam_state;motion=steam_motion;connected=true;}
  dsu_update(n,s,motion,connected);
- if(output==OUTPUT_EDEN)return;
- const int *axis=output==OUTPUT_XBOX?xbox_axis:club_axis;
+ if(vfd[n]<0)return;
+ // Idle DSU may forward the Thor; the Android placeholders stay neutral.
+ if(!routing())memset(&s,0,sizeof(s));
+ const int *axis=club_axis;
  for(int a=0;a<AXES;a++)if(s.a[a]!=old.a[a]){emit(vfd[n],EV_ABS,axis[a],s.a[a]);changed=true;}
  for(int k=0;k<KEYS;k++)if((k<12||k==14)&&((s.k^old.k)&(1u<<k))){
    emit(vfd[n],EV_KEY,key[k],!!(s.k&(1u<<k)));changed=true;
@@ -201,7 +204,7 @@ static void push_system_keys(Pad *p){
  previous_system_keys=current;
 }
 static void off(void){
- direct_active=false;
+ routing_active=false;
  dsu_stop();
  steam_slot=-1;
  memset(&steam_state,0,sizeof(steam_state));
@@ -210,13 +213,13 @@ static void off(void){
    if(pads[i].grabbed)ioctl(pads[i].fd,EVIOCGRAB,0);
    pads[i].grabbed=false; pads[i].slot=-1;
  }
- for(int n=0;n<4;n++)destroy_virtual(&vfd[n]);
+ for(int n=0;n<4;n++)push_slot(n);
  stop_system_keys();
  memset(previous,0,sizeof(previous));
 }
 static void eden_idle(void){
  if(output!=OUTPUT_EDEN){off();return;}
- direct_active=false;
+ routing_active=false;
  steam_slot=-1;
  memset(&steam_state,0,sizeof(steam_state));
  memset(&steam_motion,0,sizeof(steam_motion));
@@ -345,7 +348,7 @@ static void status(int fd){
  dprintf(fd,"END\n");
 }
 static void apply(int fd,char *cmd,enum Output next_output){
- bool eden=next_output==OUTPUT_EDEN, xbox=next_output==OUTPUT_XBOX;
+ bool eden=next_output==OUTPUT_EDEN;
  int slots[MAX],styles[MAX], count[4]={0}, halves[4]={0}, id,slot,style,end;
  int next_steam_slot=-1;
  for(int i=0;i<MAX;i++)slots[i]=-1;
@@ -364,23 +367,15 @@ static void apply(int fd,char *cmd,enum Output next_output){
    slots[i]=slot;styles[i]=style;count[slot]++;
    cmd+=end;if(*cmd==' ')cmd++;else if(*cmd)goto bad;
  }
- bool any=false;for(int s=0;s<4;s++){if(count[s])any=true;if(count[s]>1&&(count[s]!=2||halves[s]!=6))goto bad;}
- if(!any&&!eden)goto bad;
+ for(int s=0;s<4;s++)if(count[s]>1&&(count[s]!=2||halves[s]!=6))goto bad;
  if(!dsu_start()&&eden){dprintf(fd,"ERR Eden controller port is unavailable\n");return;}
 
- for(int s=0;s<4;s++){
-   if(output!=next_output||(xbox&&!count[s])){
-     destroy_virtual(&vfd[s]);memset(&previous[s],0,sizeof(previous[s]));
-   }
-   if(!eden&&(!xbox||count[s])&&vfd[s]<0 && (vfd[s]=make_pad(s,xbox))<0){
-     off();dprintf(fd,"ERR Virtual gamepads unavailable\n");return;
-   }
- }
+ if(!ensure_players()){off();dprintf(fd,"ERR Virtual gamepads unavailable\n");return;}
  output=next_output;
- direct_active=eden;
+ routing_active=true;
  for(int i=0;i<MAX;i++)if(pads[i].fd>=0){
    Pad *p=&pads[i];
-   bool grab=slots[i]>=0&&(!p->builtin||xbox||eden);
+   bool grab=slots[i]>=0;
    if(p->builtin&&grab&&system_fd<0&&(system_fd=make_system_keys())<0){
      off();dprintf(fd,"ERR Could not preserve Thor system buttons\n");return;
    }
@@ -451,6 +446,11 @@ int main(int argc,char **argv){
    if(!end||*end||parsed<1024||parsed>65535)return 2;
    port=(int)parsed;
  }
+ // A killed app must not leave an unauthenticated orphan holding its old port.
+ if(port==37820){
+   pid_t parent=getppid();
+   if(parent==1||prctl(PR_SET_PDEATHSIG,SIGTERM)<0||getppid()!=parent)return 2;
+ }
  FILE *tf=fopen(argv[1],"r");char token[65]={0};
  if(!tf||fscanf(tf,"%64[0-9a-f]",token)!=1||strlen(token)!=64)return 2;
  fclose(tf);
@@ -479,13 +479,19 @@ int main(int argc,char **argv){
          in[used]=0;
          if(!auth){if(used!=69||memcmp(in,"AUTH ",5)||memcmp(in+5,token,64))closeit=true;else{auth=true;status(fd);}}
          else if(!strcmp(in,"STATUS"))status(fd);
+         else if(!strcmp(in,"PLAYERS")){
+           if(ensure_players())status(fd);
+           else dprintf(fd,"ERR Virtual gamepads unavailable\n");
+         }
          else if(!strcmp(in,"OFF")){eden_idle();status(fd);}
          else if(!strcmp(in,"EDENIDLE")){
            if(!routing()&&dsu_start()){output=OUTPUT_EDEN;eden_idle();}
            status(fd);
          }
-         else if(!strcmp(in,"DIRECT")){off();direct_active=true;status(fd);}
+         else if(!strcmp(in,"DIRECT")){off();routing_active=true;status(fd);}
+         else if(!strcmp(in,"ROUTE"))apply(fd,in+5,OUTPUT_PROFILES);
          else if(!strncmp(in,"ROUTE ",6))apply(fd,in+6,OUTPUT_PROFILES);
+         else if(!strcmp(in,"XBOX"))apply(fd,in+4,OUTPUT_XBOX);
          else if(!strncmp(in,"XBOX ",5))apply(fd,in+5,OUTPUT_XBOX);
          else if(!strcmp(in,"EDEN"))apply(fd,in+4,OUTPUT_EDEN);
          else if(!strncmp(in,"EDEN ",5))apply(fd,in+5,OUTPUT_EDEN);
@@ -506,5 +512,6 @@ int main(int argc,char **argv){
      }}
    }
  }
- off();if(fd>=0)close(fd);close(server);return 0;
+ off();for(int n=0;n<4;n++)destroy_virtual(&vfd[n]);
+ if(fd>=0)close(fd);close(server);return 0;
 }
