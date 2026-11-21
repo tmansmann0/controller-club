@@ -177,8 +177,8 @@ static void push_slot(int n){
  if(steam_slot==n&&steam_present){s=steam_state;motion=steam_motion;connected=true;}
  dsu_update(n,s,motion,connected);
  if(vfd[n]<0)return;
- // Idle DSU may forward the Thor; the Android placeholders stay neutral.
- if(!routing())memset(&s,0,sizeof(s));
+ // While idle, only the built-in Thor is passed through to the named P1 device.
+ if(!routing()&&n!=0)memset(&s,0,sizeof(s));
  const int *axis=club_axis;
  for(int a=0;a<AXES;a++)if(s.a[a]!=old.a[a]){emit(vfd[n],EV_ABS,axis[a],s.a[a]);changed=true;}
  for(int k=0;k<KEYS;k++)if((k<12||k==14)&&((s.k^old.k)&(1u<<k))){
@@ -218,7 +218,6 @@ static void off(void){
  memset(previous,0,sizeof(previous));
 }
 static void eden_idle(void){
- if(output!=OUTPUT_EDEN){off();return;}
  routing_active=false;
  steam_slot=-1;
  memset(&steam_state,0,sizeof(steam_state));
@@ -300,7 +299,7 @@ static void scan(void){
    p.inode=st.st_ino;p.dev=st.st_rdev;p.serial=nextid++;
    snprintf(p.path,sizeof(p.path),"%s",path);
    ioctl(fd,EVIOCGBIT(EV_ABS,sizeof(p.caps)),p.caps);
-   if(output==OUTPUT_EDEN&&!routing()&&p.builtin)p.slot=0;
+   if(!routing()&&p.builtin)p.slot=0;
    snapshot(&p);pads[idx]=p;rev++;
    if(p.slot>=0)push_slot(p.slot);
  }

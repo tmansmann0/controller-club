@@ -50,6 +50,15 @@ public final class Bridge extends Service {
     @Override public void onCreate(){
         super.onCreate();current=this;
         SharedPreferences settings=getSharedPreferences("routing",MODE_PRIVATE);
+        settings.edit().remove("edenLinks").apply();
+        // Eden integration is now instructions-only; release its old folder grant.
+        for(UriPermission permission:getContentResolver().getPersistedUriPermissions()){
+            if(!(EdenGuide.PACKAGE+".user").equals(permission.getUri().getAuthority()))continue;
+            int flags=(permission.isReadPermission()?Intent.FLAG_GRANT_READ_URI_PERMISSION:0)
+                |(permission.isWritePermission()?Intent.FLAG_GRANT_WRITE_URI_PERMISSION:0);
+            try{getContentResolver().releasePersistableUriPermission(permission.getUri(),flags);}
+            catch(SecurityException ignored){}
+        }
         routingWanted=settings.getBoolean("routingWanted",false);
         String mode=settings.getString("output",settings.getBoolean("xboxOutput",true)?"XBOX":"PROFILES");
         try{output=Output.valueOf(mode);}catch(IllegalArgumentException ignored){}

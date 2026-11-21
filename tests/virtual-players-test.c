@@ -48,6 +48,18 @@ int main(void){
     for(int slot=0;slot<4;slot++)identity(slot);
     assert(!memcmp(original,vfd,sizeof(original)));
 
+    // Stop routing keeps built-in input usable through the already mapped P1 device.
+    int physical=test_open("/dev/uinput",O_RDONLY);
+    pads[0]=(Pad){.fd=physical,.builtin=true,.slot=-1};
+    pads[0].caps[ABS_X/8]|=1u<<(ABS_X%8);
+    pads[0].abs[ABS_X].minimum=-32767;pads[0].abs[ABS_X].maximum=32767;
+    pads[0].abs[ABS_X].value=12000;
+    eden_idle();
+    assert(!routing()&&!pads[0].grabbed&&pads[0].slot==0);
+    assert(test_devices[vfd[0]-TEST_FD].axes[ABS_X]==12000);
+    for(int slot=1;slot<4;slot++)assert(test_devices[vfd[slot]-TEST_FD].axes[ABS_X]==0);
+    pads[0].fd=-1;test_close(physical);off();
+
     // Recreate after process death: names, vendor/product IDs and layout stay fixed.
     for(int slot=0;slot<4;slot++)destroy_virtual(&vfd[slot]);
     assert(ensure_players()&&test_created==8);

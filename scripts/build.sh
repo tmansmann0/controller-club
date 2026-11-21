@@ -6,6 +6,8 @@ export JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/C
 export PATH="$JAVA_HOME/bin:$PATH"
 TOOLS="$SDK/build-tools/34.0.0"
 JAR="$SDK/platforms/android-34/android.jar"
+# Removed source files must not survive in an incremental APK.
+rm -rf build/classes build/dex build/generated
 mkdir -p build/{resources,classes,dex,generated}
 "$TOOLS/aapt2" compile --dir app/res -o build/resources/res.zip
 "$TOOLS/aapt2" link -I "$JAR" --manifest app/AndroidManifest.xml --java build/generated -o build/base.apk build/resources/res.zip

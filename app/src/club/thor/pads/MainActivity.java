@@ -25,7 +25,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
     private static final int[] COLORS={0xFFFF4757,0xFFFF944D,0xFFFFC53D,0xFFB7DB51,0xFF3DDC84,0xFF70E1BE,
         0xFF00B4E6,0xFF6F9DFF,0xFFAA89FF,0xFFFF86B7,0xFFA9AFBA,0xFFF1F2F4};
     private int leftShoulderPad=-1, rightShoulderPad=-1;
-    private static final int PICK_DOLPHIN = 63, PICK_EDEN = 64;
+    private static final int PICK_DOLPHIN = 63;
     private static final java.util.concurrent.Executor DOLPHIN_IO =
             java.util.concurrent.Executors.newSingleThreadExecutor();
     @Override public void onCreate(Bundle state){
@@ -364,7 +364,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         {"me.magnum.melonds","DS","Map Xbox Controller P1 as your gamepad."},
         {"org.vita3k.emulator","PS Vita","Select Xbox Controller P1 where the app offers a controller choice."},
         {"com.explusalpha.GbaEmu","GBA","Open Input Device Setup and choose the matching Club pad."},
-        {EdenSetup.PACKAGE,"Switch",""},
+        {EdenGuide.PACKAGE,"Switch",""},
         {"org.yuzu.yuzu_emu","Switch","Use Pro Controller and select the matching Club pad per player."}
     };
     @Override public void emulators(){
@@ -407,7 +407,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
                 copy.addView(ClubUi.text(this,emulator[1],12,ClubUi.SOFT,false));
                 row.addView(copy,new android.widget.LinearLayout.LayoutParams(0,-2,1));
                 boolean dolphin="org.dolphinemu.dolphinemu".equals(emulator[0]);
-                boolean eden=EdenSetup.PACKAGE.equals(emulator[0]);
+                boolean eden=EdenGuide.PACKAGE.equals(emulator[0]);
                 View details=ClubUi.button(this,dolphin?"Mario Kart Wii":eden?"Set up controls":"Controls",null,0,ClubUi.TEXT,()->{
                     if(dolphin)marioKartOptions();
                     else if(eden)edenOptions();
@@ -428,47 +428,21 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(ClubUi.FOCUS);
     }
     private void edenOptions(){
-        show(new AlertDialog.Builder(this,android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Eden controller setup")
-            .setMessage("All four Eden players follow the Club lineup. Stopping routing returns the Thor to P1. Connect USB and start the helper before using this mode. Close Eden before applying the settings, then reopen it.")
-            .setPositiveButton("Use Club seats",(d,w)->editEden(false))
-            .setNeutralButton("Restore previous",(d,w)->editEden(true))
-            .setNegativeButton("Close",null));
-    }
-    private void editEden(boolean restore){
-        for(android.content.UriPermission permission:getContentResolver().getPersistedUriPermissions()){
-            if(permission.isWritePermission()&&EdenSetup.isEdenRoot(permission.getUri())){
-                saveEden(permission.getUri(),restore);
-                return;
-            }
-        }
-        if(restore){msg("No saved Eden setup","Set up Eden’s Thor mapping first.");return;}
-        Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-            .putExtra(DocumentsContract.EXTRA_INITIAL_URI,DocumentsContract.buildDocumentUri(EdenSetup.AUTHORITY,"root"));
-        try{startActivityForResult(picker,PICK_EDEN);}
-        catch(ActivityNotFoundException e){msg("Eden folder unavailable","Android’s file picker could not be opened.");}
-    }
-    private void saveEden(Uri tree,boolean restore){
-        DOLPHIN_IO.execute(()->{
-            try{
-                boolean updated=new EdenSetup(getApplicationContext(),tree).update(restore);
-                runOnUiThread(()->{
-                    if(isFinishing()||isDestroyed())return;
-                    if(!restore&&Bridge.current!=null)Bridge.current.selectOutput(Bridge.Output.EDEN);
-                    msg(updated?(restore?"Eden mapping restored":"Eden follows Club seats"):
-                        (restore?"No Club mapping to restore":"Eden already follows Club seats"),
-                        "Fully reopen Eden to load the mapping.");
-                });
-            }catch(Exception e){
-                runOnUiThread(()->{if(!isFinishing()&&!isDestroyed())msg("Could not update Eden",e.getLocalizedMessage());});
-            }
-        });
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(ClubUi.dp(this,20),ClubUi.dp(this,16),ClubUi.dp(this,20),ClubUi.dp(this,12));panel.setBackgroundColor(ClubUi.BG);
+        panel.addView(ClubUi.text(this,"Eden · Controller Club",22,ClubUi.TEXT,true));
+        ScrollView scroll=new ScrollView(this);
+        TextView guide=ClubUi.text(this,EdenGuide.INSTRUCTIONS,14,ClubUi.SOFT,false);
+        guide.setPadding(0,ClubUi.dp(this,10),0,ClubUi.dp(this,10));scroll.addView(guide);
+        panel.addView(scroll,new LinearLayout.LayoutParams(-1,ClubUi.dp(this,265)));
+        panel.addView(ClubUi.button(this,"Open Eden on top",null,0,ClubUi.FOCUS,()->{dialog.dismiss();launch(EdenGuide.PACKAGE);}));
+        panel.addView(ClubUi.button(this,"Done",null,0,ClubUi.TEXT,()->dialog.dismiss()));
+        show(new AlertDialog.Builder(this).setView(panel));
     }
     private void marioKartOptions(){
         show(new AlertDialog.Builder(this,android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Mario Kart Wii · Controller setup")
-            .setMessage("Bind both Mario Kart Wii players to the order shown in Controller Club. Start routing with the USB helper before launching the game.")
+            .setMessage("Bind both Mario Kart Wii players to the order shown in Controller Club. Start Club routing before launching the game.")
             .setPositiveButton("Use Club seats",(d,w)->editMarioKart(false))
             .setNeutralButton("Restore previous",(d,w)->editMarioKart(true))
             .setNegativeButton("Close",null));
@@ -491,14 +465,6 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         super.onActivityResult(code,result,data);
         if(result!=RESULT_OK||data==null||data.getData()==null)return;
         Uri tree=data.getData();
-        if(code==PICK_EDEN){
-            if(!EdenSetup.isEdenRoot(tree)){msg("Choose the Eden folder","Choose Eden from the file picker sidebar, then tap Use this folder.");return;}
-            try{
-                getContentResolver().takePersistableUriPermission(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                saveEden(tree,false);
-            }catch(SecurityException e){msg("Eden access was not granted","Choose the Eden folder and allow access.");}
-            return;
-        }
         if(code!=PICK_DOLPHIN)return;
         if(!MarioKartSetup.isDolphinRoot(tree)){android.util.Log.w("ClubSetup","Unexpected folder provider "+tree.getAuthority()+" id "+DocumentsContract.getTreeDocumentId(tree));msg("Choose the Dolphin folder","In the file picker, choose Dolphin Emulator from the sidebar, then tap Use this folder.");return;}
         try{
@@ -517,7 +483,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
                 }else{
                     setup.apply();
                     title="Mario Kart Wii follows Club seats";
-                    message="Start Club routing with the USB helper, then reopen Mario Kart Wii. Both players follow the order shown in Controller Club.";
+                    message="Start Club routing, then reopen Mario Kart Wii. Both players follow the order shown in Controller Club.";
                 }
             }catch(Exception e){
                 title="Could not update Dolphin";
@@ -531,7 +497,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         Intent i=getPackageManager().getLaunchIntentForPackage(pkg);
         if(i==null){msg("Open emulator","Use your launcher to open this app.");return;}
         Bridge bridge=Bridge.current;
-        if(bridge!=null)bridge.selectOutput(EdenSetup.PACKAGE.equals(pkg)?Bridge.Output.EDEN:
+        if(bridge!=null)bridge.selectOutput(EdenGuide.PACKAGE.equals(pkg)?Bridge.Output.EDEN:
             pkg.equals("org.dolphinemu.dolphinemu")||pkg.equals("info.cemu.cemuplus")?Bridge.Output.PROFILES:Bridge.Output.XBOX);
         try{startActivity(i,ActivityOptions.makeBasic().setLaunchDisplayId(0).toBundle());}
         catch(RuntimeException e){msg("Open emulator","Use your launcher to open this app.");}
