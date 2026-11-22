@@ -10,6 +10,10 @@ Open Controller Club and tap **Nearby** to discover and pair Bluetooth gamepads,
 
 The emulator menu detects Dolphin, Cemu Plus, ARMSX3, installed Switch port apps and several other emulators, and provides input setup guidance. Per-game support varies. A native Switch port is not a general-purpose Switch emulator.
 
+## Nintendo-mode controllers
+
+Switch Pro-compatible controllers, including BattlerGC Pro in its default Bluetooth mode, report their Nintendo-labeled A/B/X/Y buttons differently from Xbox controllers. Club normalizes these four buttons so the label you press reaches the matching Club control. Xbox and Thor mappings are unchanged. When Thor firmware replaces a Switch Pro-compatible HID device with an AYN 2020:0111 proxy, Club retains its Nintendo identity for saved assignments while reading the proxy’s already-translated controls. This prevents that firmware change from moving the controller to a different player slot. BattlerGC Pro's Switch mode reports digital triggers; analog trigger travel is not present in that mode's captured input. In three-player games, assign it to Club P3 and select the P3 Stable profile in Eden (or three Club players in the Mario Kart Wii setup).
+
 ## Original Steam Controller rear paddles
 
 In a player panel, tap **Steam rear paddles** while the original Steam Controller is connected. Choose the left and right paddle independently: A/B/X/Y (Xbox positions), bumpers, triggers, stick clicks, D-pad directions, Select/Back, Start, Guide, or Unassigned. The picker uses Club's own controls. Both paddles start unassigned; saved bindings survive reconnection and reboot and follow the Steam Controller when its player slot changes.

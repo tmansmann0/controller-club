@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="club.thor.pads" android:versionCode="23" android:versionName="0.6.8">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="club.thor.pads" android:versionCode="25" android:versionName="0.6.10">
   <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="32"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.VIBRATE"/>

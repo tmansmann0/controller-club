@@ -135,6 +135,14 @@ static State map(Pad *p){
  int right=getk(p,BTN_DPAD_RIGHT)||getk(p,BTN_TRIGGER_HAPPY2)||hx>0;
  if(!p->side){
    for(int i=0;i<KEYS;i++) put(&s,i,getk(p,key[i]));
+   // hid-nintendo reports Nintendo face labels using Linux positional codes.
+   // Normalize those labels to Club's A/B/X/Y semantics, just as Android's
+   // Vendor_057e_Product_2009.kl does. Includes BattlerGC Pro in Switch mode.
+   if(p->vendor==0x057e&&p->product==0x2009){
+     s.k&=~15u;
+     put(&s,0,getk(p,BTN_EAST));put(&s,1,getk(p,BTN_SOUTH));
+     put(&s,2,getk(p,BTN_WEST));put(&s,3,getk(p,BTN_NORTH));
+   }
    s.a[0]=x;s.a[1]=y;
    s.a[2]=scale(p,prefers(p,ABS_RX,ABS_Z),false);
    s.a[3]=scale(p,prefers(p,ABS_RY,ABS_RZ),false);
@@ -331,6 +339,12 @@ static void events(Pad *p){
    }
  }
 }
+// AYN's controller mapper can replace the original HID node with a 2020:0111
+// proxy but retain its name. Keep the public identity stable while map() still
+// uses the raw device ID and layout (the proxy already translates buttons).
+static bool rewritten_switch(const Pad *p){
+ return p->vendor==0x2020&&p->product==0x0111&&!strcmp(p->name,"Nintendo Switch Pro Controller");
+}
 static void status(int fd){
  int rewritten_xbox_count=0;
  for(int i=0;i<MAX;i++)
@@ -344,7 +358,8 @@ static void status(int fd){
    bool rewritten_nano=nano&&p->vendor==0x2020&&!strcmp(p->name,"Xbox Wireless Controller");
    const char *unique=rewritten_nano&&nano_unique[0]?nano_unique:p->unique;
    dprintf(fd,"PAD2 %d %d %d %d %d %d %d %016llx %s\n",p->serial,p->side,p->builtin,p->slot,p->grabbed,
-           rewritten_nano?0x045e:p->vendor,rewritten_nano?0x0b4f:p->product,
+           rewritten_nano?0x045e:rewritten_switch(p)?0x057e:p->vendor,
+           rewritten_nano?0x0b4f:rewritten_switch(p)?0x2009:p->product,
            *unique?(unsigned long long)identity_hash(unique):0ULL,p->name);
  }
  if(steam_present)
