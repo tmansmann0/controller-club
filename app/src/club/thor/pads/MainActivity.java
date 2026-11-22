@@ -544,12 +544,21 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         });
     }
     private void marioKartOptions(){
-        show(new AlertDialog.Builder(this,android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Mario Kart Wii · Controller setup")
-            .setMessage("Bind both Mario Kart Wii players to the order shown in Controller Club. Start Club routing before launching the game.")
-            .setPositiveButton("Use Club seats",(d,w)->editMarioKart(false))
-            .setNeutralButton("Restore previous",(d,w)->editMarioKart(true))
-            .setNegativeButton("Close",null));
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(ClubUi.dp(this,18),ClubUi.dp(this,16),ClubUi.dp(this,18),ClubUi.dp(this,12));
+        panel.setBackgroundColor(ClubUi.BG);
+        panel.addView(ClubUi.text(this,"Mario Kart Wii",22,ClubUi.TEXT,true));
+        panel.addView(ClubUi.text(this,"Choose how many Club players to prepare. Other player slots and game settings stay as you set them.",14,ClubUi.SOFT,false));
+        for(int count=2;count<=4;count++){
+            final int players=count;
+            panel.addView(ClubUi.button(this,"Use "+players+" Club players",null,0,ClubUi.FOCUS,()->{
+                getSharedPreferences("routing",0).edit().putInt("marioKartPlayers",players).apply();
+                dialog.dismiss();editMarioKart(false);
+            }));
+        }
+        panel.addView(ClubUi.button(this,"Restore previous",null,0,ClubUi.TEXT,()->{dialog.dismiss();editMarioKart(true);}));
+        panel.addView(ClubUi.button(this,"Close",null,0,ClubUi.TEXT,()->dialog.dismiss()));
+        show(new AlertDialog.Builder(this).setView(panel));styleClubDialog();
     }
     private void editMarioKart(boolean restore){
         if(!restore&&Bridge.current!=null)Bridge.current.selectOutput(Bridge.Output.PROFILES);
@@ -578,6 +587,7 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
         }catch(SecurityException e){msg("Dolphin access was not granted","Choose the Dolphin Emulator folder and allow access.");}
     }
     private void saveMarioKart(Uri tree,boolean restore){
+        final int players=Math.max(2,Math.min(4,getSharedPreferences("routing",0).getInt("marioKartPlayers",2)));
         DOLPHIN_IO.execute(()->{
             String title,message;
             try{
@@ -586,9 +596,9 @@ public final class MainActivity extends Activity implements ClubUi.Actions, Inpu
                     title=setup.restore()?"Previous settings restored":"No Club settings to restore";
                     message="Changes take effect when you next open Mario Kart Wii.";
                 }else{
-                    setup.apply();
+                    setup.apply(players);
                     title="Mario Kart Wii follows Club seats";
-                    message="Start Club routing, then reopen Mario Kart Wii. Both players follow the order shown in Controller Club.";
+                    message="Start Club routing, then reopen Mario Kart Wii. "+players+" players follow the order shown in Controller Club.";
                 }
             }catch(Exception e){
                 title="Could not update Dolphin";

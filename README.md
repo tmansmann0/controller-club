@@ -51,7 +51,7 @@ Swipe down twice and tap **Controller Club** to open the player lineup on the lo
 
 ### Mario Kart Wii multiplayer
 
-For the US release, use **Emulators → Dolphin → Mario Kart Wii → Use Club seats**. On first use, select the **Dolphin Emulator** folder in Android’s file picker. With routing ready, start routing and launch Mario Kart Wii. Dolphin loads P1 and P2 from the Club lineup, including when you swap the Xbox Nano and the Thor controls. **Restore previous** restores the prior game-specific mappings.
+For the US release, use **Emulators → Dolphin → Mario Kart Wii**, then choose **Use 2, 3, or 4 Club players**. On first use, select the **Dolphin Emulator** folder in Android’s file picker. With routing ready, start routing and launch Mario Kart Wii. Dolphin loads the selected Club players from the lineup, including when physical controllers swap seats. Every selected player gets a profile that matches its named Club device across Android controller-number changes. Unselected player slots and unrelated game settings are preserved. **Restore previous** restores Club-owned game-specific mappings, preserving later user edits. Backups for newly selected players retain their settings from before that player was added.
 
 ### Eden — stable profiles
 

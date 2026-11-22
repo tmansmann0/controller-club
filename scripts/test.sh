@@ -23,3 +23,6 @@ java_home=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents
 
 "$java_home/bin/javac" -d build/tests app/src/club/thor/pads/BatteryReading.java tests/BatteryReadingTest.java
 "$java_home/bin/java" -cp build/tests club.thor.pads.BatteryReadingTest
+
+"$java_home/bin/javac" -d build/tests app/src/club/thor/pads/MarioKartProfiles.java tests/MarioKartProfilesTest.java
+"$java_home/bin/java" -cp build/tests club.thor.pads.MarioKartProfilesTest
